@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, CheckCircle, AlertCircle, Info, Clock, Trash2, Bell, ExternalLink } from 'lucide-react';
+import { CheckCircle, AlertCircle, Info, Clock, Trash2, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface Notification {

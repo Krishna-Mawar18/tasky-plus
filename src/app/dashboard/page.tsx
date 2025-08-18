@@ -4,23 +4,23 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
-import { Plus, Search, Bell, Settings, Users, Calendar, BarChart3, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper, CheckSquare, ListTodo, Star, Clock, Tag, Filter, Edit, Trash2, X, FileText, ChevronDown, Target, TrendingUp, MoreVertical, LogOut, CheckCircle, Info, AlertCircle, User } from 'lucide-react';
-import { workspaceService, statsService, searchService, boardService, userService, taskService } from '@/lib/services';
+import { Plus, Search, Bell, Users, BarChart3, ArrowUpDown, PartyPopper, CheckSquare, ListTodo, Clock, Edit, Trash2, X, ChevronDown, Target, TrendingUp, LogOut, CheckCircle, Info, AlertCircle, User } from 'lucide-react';
+import { workspaceService, searchService, boardService, userService, taskService } from '@/lib/services';
 import { enhancedNotificationService } from '@/lib/notificationService';
-import { Workspace, QuickStats, Board, Task } from '@/types';
+import { Workspace, QuickStats, Board, Task, Notification } from '@/types';
 import CreateModal from '@/components/CreateModal';
 
 import EditWorkspaceModal from '@/components/EditWorkspaceModal';
 import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import NotificationPopup from '@/components/NotificationPopup';
 import SearchResults from '@/components/SearchResults';
-import FirebaseSetupGuide from '@/components/FirebaseSetupGuide';
+
 
 export default function DashboardPage() {
   const { user, loading, logout, isFirebaseConfigured } = useAuth();
   const router = useRouter();
   const [imageError, setImageError] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ workspaces: Workspace[]; }>({ workspaces: [] });
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -30,7 +30,7 @@ export default function DashboardPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showNotificationDrawer, setShowNotificationDrawer] = useState(false);
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -51,49 +51,13 @@ export default function DashboardPage() {
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [selectedFilterWorkspace, setSelectedFilterWorkspace] = useState<string>('all');
   const [selectedFilterBoard, setSelectedFilterBoard] = useState<string>('all');
-  const [showStatsFilter, setShowStatsFilter] = useState(false);
+
   const [lastRefresh, setLastRefresh] = useState(Date.now());
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [showBoardDropdown, setShowBoardDropdown] = useState(false);
 
-  // Function to manually refresh all data
-  const refreshData = useCallback(async () => {
-    if (!user || !isFirebaseConfigured) return;
-    
-    try {
-      // Reload workspaces and their boards
-      const liveWorkspaces = await workspaceService.getWorkspaces(user.uid);
-      setWorkspaces(liveWorkspaces);
-      
-      // Fetch boards for each workspace
-      const boardsData: Record<string, Board[]> = {};
-      for (const workspace of liveWorkspaces) {
-        try {
-          const boards = await boardService.getBoards(workspace.id);
-          boardsData[workspace.id] = boards;
-        } catch (error) {
-          boardsData[workspace.id] = [];
-        }
-      }
-      setWorkspaceBoards(boardsData);
-      
-      // Load all tasks from all boards
-      await loadAllTasks(boardsData);
-      
-      setLastRefresh(Date.now());
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    }
-  }, [user, isFirebaseConfigured]);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/');
-    }
-  }, [user, loading, router]);
-
   // Function to load all tasks from all boards
-  const loadAllTasks = async (boardsData: Record<string, Board[]>) => {
+  const loadAllTasks = useCallback(async (boardsData: Record<string, Board[]>) => {
     const allTasksArray: Task[] = [];
     
     for (const workspaceId in boardsData) {
@@ -125,7 +89,7 @@ export default function DashboardPage() {
     setRecentTasks(sortedTasks.slice(0, 10));
     
     calculateStats(allTasksArray);
-  };
+  }, []);
 
   // Function to calculate stats based on filtered tasks
   const calculateStats = (tasks: Task[]) => {
@@ -153,6 +117,42 @@ export default function DashboardPage() {
       productivityScore,
     });
   };
+
+  // Function to manually refresh all data
+  const refreshData = useCallback(async () => {
+    if (!user || !isFirebaseConfigured) return;
+    
+    try {
+      // Reload workspaces and their boards
+      const liveWorkspaces = await workspaceService.getWorkspaces(user.uid);
+      setWorkspaces(liveWorkspaces);
+      
+      // Fetch boards for each workspace
+      const boardsData: Record<string, Board[]> = {};
+      for (const workspace of liveWorkspaces) {
+        try {
+          const boards = await boardService.getBoards(workspace.id);
+          boardsData[workspace.id] = boards;
+        } catch (error) {
+          boardsData[workspace.id] = [];
+        }
+      }
+      setWorkspaceBoards(boardsData);
+      
+      // Load all tasks from all boards
+      await loadAllTasks(boardsData);
+      
+      setLastRefresh(Date.now());
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  }, [user, isFirebaseConfigured, loadAllTasks]);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/');
+    }
+  }, [user, loading, router]);
 
   // Effect to recalculate stats when filters change
   useEffect(() => {
@@ -203,7 +203,7 @@ export default function DashboardPage() {
     return () => {
       if (unsubscribeRef.current) unsubscribeRef.current();
     };
-  }, [user, isFirebaseConfigured]);
+  }, [user, isFirebaseConfigured, loadAllTasks]);
 
   // Auto-refresh when window gains focus (user comes back to dashboard)
   useEffect(() => {
@@ -254,10 +254,7 @@ export default function DashboardPage() {
     await logout();
   }, [logout]);
 
-  // Optimize navigation function
-  const handleGoToSetup = useCallback(() => {
-    router.push('/');
-  }, [router]);
+
 
   const handleCreateWorkspace = useCallback(() => {
     setShowCreateModal(true);
@@ -309,7 +306,7 @@ export default function DashboardPage() {
 
 
   // 2. Add error boundaries and user-friendly error messages for all async actions
-  const handleCreateSubmit = useCallback(async (data: any) => {
+  const handleCreateSubmit = useCallback(async (data: { name: string; description?: string; type: 'workspace' | 'board' }) => {
     if (!user) return;
     setError(null);
     try {
@@ -317,6 +314,7 @@ export default function DashboardPage() {
         ...data,
         ownerId: user.uid,
         members: [user.uid],
+        color: 'bg-gray-500', // Default color
       });
       await userService.addWorkspaceToUser(user.uid, workspaceId);
       setShowCreateModal(false);
@@ -399,9 +397,9 @@ export default function DashboardPage() {
       // Force a re-render by updating the page
       window.location.reload();
       
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error updating profile:', err);
-      setError(err.message || 'Error updating profile. Please try again.');
+      setError(err instanceof Error ? err.message : 'Error updating profile. Please try again.');
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -419,8 +417,8 @@ export default function DashboardPage() {
       if (accountAge < oneDayInMs) {
         await enhancedNotificationService.notifyWelcome(user.uid);
       }
-    } catch (error: any) {
-      if (error?.message?.includes('index')) {
+    } catch (error) {
+      if (error instanceof Error && error.message?.includes('index')) {
         console.warn('Firestore index not created yet. Welcome notification will be created once the index is available.');
       } else {
         console.error('Error creating welcome notification:', error);
@@ -452,7 +450,7 @@ export default function DashboardPage() {
     try {
       const userNotifications = await enhancedNotificationService.getNotifications(user.uid, 20);
       setNotifications(userNotifications);
-      const unreadCount = userNotifications.filter((n: any) => !n.read).length;
+      const unreadCount = userNotifications.filter((n) => !n.read).length;
       setNotificationCount(unreadCount);
     } catch (error) {
       console.error('Error loading notifications:', error);
@@ -472,29 +470,7 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  // Test function to create a sample workspace (for debugging)
-  const createSampleWorkspace = useCallback(async () => {
-    if (!user) return;
-    
-    try {
-      const workspaceId = await workspaceService.createWorkspace({
-        name: 'Sample Workspace',
-        description: 'This is a sample workspace for testing',
-        color: 'bg-gray-500',
-        ownerId: user.uid,
-        members: [user.uid],
-      });
-      
-      // Also add workspace to user's workspace list
-      await userService.addWorkspaceToUser(user.uid, workspaceId);
-      
-      // Refresh workspaces
-      const userWorkspaces = await workspaceService.getWorkspaces(user.uid);
-      setWorkspaces(userWorkspaces);
-    } catch (error) {
-      console.error('Error creating sample workspace:', error);
-    }
-  }, [user]);
+
 
   // Function to ensure user profile exists
   const ensureUserProfile = useCallback(async () => {
@@ -545,27 +521,7 @@ export default function DashboardPage() {
     );
   }
 
-  const UserAvatar = () => {
-    if (!user.photoURL || imageError) {
-      return (
-        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
-          <span className="text-white font-bold text-sm">{userInitials}</span>
-        </div>
-      );
-    }
 
-    return (
-      <Image
-        src={user.photoURL}
-        alt={user.displayName || 'User'}
-        width={32}
-        height={32}
-        className="rounded-full"
-        onError={() => setImageError(true)}
-        priority
-      />
-    );
-  };
 
   const UserProfileImage = () => {
     if (!user.photoURL || imageError) {
@@ -589,23 +545,7 @@ export default function DashboardPage() {
     );
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'in-progress': return 'bg-gray-100 text-gray-800';
-      case 'todo': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'text-red-600';
-      case 'medium': return 'text-yellow-600';
-      case 'low': return 'text-green-600';
-      default: return 'text-gray-600';
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[#f8f8f6] text-black relative overflow-x-hidden">
@@ -629,7 +569,7 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <div className="flex items-center space-x-3">
-              <img src="/tasky_logo.svg" alt="Tasky Logo" className="w-10 h-10 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
+              <Image src="/tasky_logo.svg" alt="Tasky Logo" width={40} height={40} className="transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
               <span className="text-2xl font-extrabold font-mono tracking-tight">SPARK</span>
             </div>
             
@@ -713,7 +653,7 @@ export default function DashboardPage() {
                         <div>
                           <h3 className="font-mono font-bold text-gray-900">Notifications</h3>
                           <p className="text-xs text-gray-600 font-mono">
-                            {notifications.filter((n: any) => !n.read).length} unread
+                            {notifications.filter((n) => !n.read).length} unread
                           </p>
                         </div>
                       </div>
@@ -733,11 +673,11 @@ export default function DashboardPage() {
                             <Bell className="w-6 h-6 text-gray-300" />
                           </div>
                           <p className="font-mono font-bold mb-1">No notifications</p>
-                          <p className="text-sm text-center">You're all caught up!</p>
+                          <p className="text-sm text-center">You&apos;re all caught up!</p>
                         </div>
                       ) : (
                         <div className="p-3 space-y-3">
-                          {notifications.slice(0, 5).map((notification: any, index: number) => (
+                          {notifications.slice(0, 5).map((notification, index: number) => (
                             <div
                               key={notification.id}
                               className={`p-3 rounded-lg border transition-all duration-200 hover:shadow-sm ${
@@ -1357,7 +1297,7 @@ export default function DashboardPage() {
                               </span>
                               <span className="text-xs text-gray-400">•</span>
                               <span className="text-xs text-gray-500 font-mono">
-                                {(task as any).boardName || 'Unknown Board'}
+                                {task.boardName || 'Unknown Board'}
                               </span>
                               <span className={`px-2 py-1 rounded-full text-xs font-mono font-bold ${
                                 isCompleted 

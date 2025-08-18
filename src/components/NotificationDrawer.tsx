@@ -176,8 +176,8 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
                 >
                   <NotificationCard
                     notification={notification}
-                    onMarkAsRead={handleMarkAsRead}
-                    onDelete={handleDeleteNotification}
+                    onMarkAsReadAction={handleMarkAsRead}
+                    onDeleteAction={handleDeleteNotification}
                   />
                 </div>
               ))}
