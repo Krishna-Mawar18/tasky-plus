@@ -9,8 +9,7 @@ import { workspaceService, statsService, boardService } from '@/lib/services';
 import { Workspace, QuickStats, Board } from '@/types';
 import CreateModal from '@/components/CreateModal';
 import CreateBoardModal from '@/components/CreateBoardModal';
-import NotificationDrawer from '@/components/NotificationDrawer';
-import FirebaseSetupGuide from '@/components/FirebaseSetupGuide';
+
 
 export default function DashboardPage() {
   const { user, loading, logout, isFirebaseConfigured } = useAuth();
@@ -253,9 +252,6 @@ export default function DashboardPage() {
     return null; // Will redirect to home
   }
 
-  if (!isFirebaseConfigured) {
-    return <FirebaseSetupGuide />;
-  }
 
   const UserAvatar = () => {
     if (!user.photoURL || imageError) {
@@ -631,12 +627,7 @@ export default function DashboardPage() {
         workspaces={workspaces}
       />
 
-      {/* Notification Drawer */}
-      <NotificationDrawer
-        isOpen={showNotificationDrawer}
-        onClose={() => setShowNotificationDrawer(false)}
-        userId={user.uid}
-      />
+
 
       {/* Animations */}
       <style jsx global>{`
