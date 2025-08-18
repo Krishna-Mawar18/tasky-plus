@@ -26,11 +26,11 @@ interface Notification {
 
 interface NotificationDrawerProps {
   isOpen: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   userId: string;
 }
 
-export default function NotificationDrawer({ isOpen, onClose, userId }: NotificationDrawerProps) {
+export default function NotificationDrawer({ isOpen, onCloseAction, userId }: NotificationDrawerProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
@@ -58,13 +58,13 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        onCloseAction();
       }
     };
 
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, onCloseAction]);
 
   const handleDeleteNotification = async (notificationId: string) => {
     try {
@@ -100,7 +100,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-sm z-40"
-          onClick={onClose}
+          onClick={onCloseAction}
         />
       )}
       
@@ -122,7 +122,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={onCloseAction}
             className="p-2 hover:bg-white rounded-xl transition-all duration-200 hover:shadow-md border border-gray-200 hover:border-gray-300"
           >
             <X className="w-5 h-5 text-gray-600 hover:text-gray-900" />

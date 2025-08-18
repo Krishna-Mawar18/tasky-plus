@@ -279,4 +279,5 @@ If you encounter any issues or have questions:
 
 ---
 
-**Built with ❤️ using Next.js, TypeScript, and Firebase**
+**Built with ❤️ using Next.js, TypeScript, and Firebase**#   t a s k y  
+ 
