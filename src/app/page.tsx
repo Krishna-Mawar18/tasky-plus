@@ -3,8 +3,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef, MutableRefObject } from 'react';
-import SetupGuide from '@/components/SetupGuide';
-import FirebaseSetupGuide from '@/components/FirebaseSetupGuide';
+
 import { CheckSquare, ListTodo, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper } from 'lucide-react';
 
 const features = [
@@ -174,10 +173,7 @@ export default function HomePage() {
     return null; // Will redirect to dashboard
   }
 
-  // Show Firebase setup guide if Firebase is not configured
-  if (!isFirebaseConfigured) {
-    return <FirebaseSetupGuide />;
-  }
+
 
   return (
     <div className="min-h-screen bg-[#f8f8f6] text-black relative overflow-x-hidden">
