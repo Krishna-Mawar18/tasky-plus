@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read and write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Workspaces - users can access workspaces they are members of
+    match /workspaces/{workspaceId} {
+      allow read, write: if request.auth != null && 
+        (request.auth.uid in resource.data.members || 
+         request.auth.uid == resource.data.ownerId);
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.ownerId;
+    }
+    
+    // Boards - users can access boards in workspaces they are members of
+    match /boards/{boardId} {
+      allow read, write: if request.auth != null;
+      // Note: In production, you should check workspace membership here
+    }
+    
+    // Tasks - users can access tasks in boards they have access to
+    match /tasks/{taskId} {
+      allow read, write: if request.auth != null;
+      // Note: In production, you should check board/workspace membership here
+    }
+    
+    // Notifications - users can only access their own notifications
+    match /notifications/{notificationId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId;
+    }
+  }
+}

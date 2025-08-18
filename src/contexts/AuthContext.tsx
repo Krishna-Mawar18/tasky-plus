@@ -35,12 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Handle Firestore operations in background (non-blocking)
       if (user && db && navigator.onLine) {
         try {
-          console.log('Setting up user profile for:', user.uid);
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
 
           if (!userSnap.exists()) {
-            console.log('Creating new user profile');
             await setDoc(userRef, {
               uid: user.uid,
               email: user.email,
@@ -52,9 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               workspaces: [], // Initialize empty workspaces array
               lastLogin: new Date(),
             });
-            console.log('User profile created successfully');
           } else {
-            console.log('User profile already exists, updating last login');
             // Update last login time
             await updateDoc(userRef, {
               lastLogin: new Date(),

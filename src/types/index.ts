@@ -53,6 +53,8 @@ export interface Task {
   columnId: string;
   boardId: string;
   workspaceId: string;
+  // Optional properties added during data loading for UI purposes
+  boardName?: string;
 }
 
 export interface Notification {

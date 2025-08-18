@@ -67,7 +67,7 @@ export default function EditWorkspaceModal({ isOpen, onClose, workspace, onSubmi
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-xl"
         onClick={handleClose}
       />
       

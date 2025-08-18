@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X, CheckCircle, AlertCircle, Info, Clock, Trash2, Bell } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Info, Clock, Trash2, Bell, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface Notification {
   id: string;
@@ -9,18 +10,28 @@ interface Notification {
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
+  category: 'task' | 'workspace' | 'system' | 'reminder';
   read: boolean;
+  actionUrl?: string;
+  metadata?: {
+    taskId?: string;
+    workspaceId?: string;
+    boardId?: string;
+    assignerId?: string;
+    assignerName?: string;
+  };
   createdAt: Date;
 }
 
 interface NotificationCardProps {
   notification: Notification;
-  onMarkAsRead: (id: string) => void;
-  onDelete: (id: string) => void;
+  onMarkAsReadAction: (id: string) => void;
+  onDeleteAction: (id: string) => void;
 }
 
-export default function NotificationCard({ notification, onMarkAsRead, onDelete }: NotificationCardProps) {
+export default function NotificationCard({ notification, onMarkAsReadAction, onDeleteAction }: NotificationCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const router = useRouter();
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -50,15 +61,26 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   };
 
+  const handleCardClick = () => {
+    if (notification.actionUrl) {
+      router.push(notification.actionUrl);
+      // Mark as read when navigating
+      if (!notification.read) {
+        onMarkAsReadAction(notification.id);
+      }
+    }
+  };
+
   return (
     <div
       className={`relative p-4 rounded-xl border transition-all duration-300 hover:shadow-lg hover:scale-[1.02] group ${
         notification.read 
           ? 'bg-gray-50 border-gray-200' 
           : 'bg-white border-gray-300 shadow-sm'
-      }`}
+      } ${notification.actionUrl ? 'cursor-pointer' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={handleCardClick}
     >
       {/* Unread indicator */}
       {!notification.read && (
@@ -84,9 +106,27 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
 
         {/* Action buttons */}
         <div className={`flex items-center space-x-1 transition-all duration-200 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+          {notification.actionUrl && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(notification.actionUrl!);
+                if (!notification.read) {
+                  onMarkAsReadAction(notification.id);
+                }
+              }}
+              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-110"
+              title="Go to"
+            >
+              <ExternalLink className="w-3 h-3" />
+            </button>
+          )}
           {!notification.read && (
             <button
-              onClick={() => onMarkAsRead(notification.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMarkAsReadAction(notification.id);
+              }}
               className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all duration-200 hover:scale-110"
               title="Mark as read"
             >
@@ -94,7 +134,10 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
             </button>
           )}
           <button
-            onClick={() => onDelete(notification.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteAction(notification.id);
+            }}
             className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-110"
             title="Delete notification"
           >
@@ -108,15 +151,30 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
         {notification.message}
       </p>
 
-      {/* Status badge */}
+      {/* Status and category badges */}
       <div className="mt-3 flex items-center justify-between">
-        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-mono font-bold transition-all duration-200 ${
-          notification.read 
-            ? 'bg-gray-100 text-gray-600' 
-            : 'bg-blue-100 text-blue-700 group-hover:bg-blue-200'
-        }`}>
-          {notification.read ? 'Read' : 'Unread'}
-        </span>
+        <div className="flex items-center space-x-2">
+          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-mono font-bold transition-all duration-200 ${
+            notification.category === 'task' ? 'bg-green-100 text-green-700' :
+            notification.category === 'workspace' ? 'bg-purple-100 text-purple-700' :
+            notification.category === 'reminder' ? 'bg-orange-100 text-orange-700' :
+            'bg-blue-100 text-blue-700'
+          }`}>
+            {notification.category}
+          </span>
+          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-mono font-bold transition-all duration-200 ${
+            notification.read 
+              ? 'bg-gray-100 text-gray-600' 
+              : 'bg-blue-100 text-blue-700 group-hover:bg-blue-200'
+          }`}>
+            {notification.read ? 'Read' : 'Unread'}
+          </span>
+        </div>
+        {notification.actionUrl && (
+          <div className="text-xs text-gray-400 font-mono">
+            Click to navigate
+          </div>
+        )}
       </div>
     </div>
   );

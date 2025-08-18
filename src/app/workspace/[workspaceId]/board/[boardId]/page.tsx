@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import { use } from 'react';
-import { Plus, MoreVertical, Edit, Trash2, User, Calendar, Tag, MessageSquare, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Plus, MoreVertical, Edit, Trash2, User, Calendar, Tag, MessageSquare, ArrowLeft, AlertTriangle, CheckCircle, XCircle, Info, X } from 'lucide-react';
 import { boardService, taskService } from '@/lib/services';
 import { Board, Task, Column } from '@/types';
 
@@ -35,6 +35,24 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [showEditBoard, setShowEditBoard] = useState(false);
+  const [boardForm, setBoardForm] = useState({
+    name: '',
+    description: '',
+  });
+  const [toast, setToast] = useState<{
+    id: string;
+    message: string;
+    type: 'success' | 'error' | 'info';
+    show: boolean;
+    progress: number;
+  }>({
+    id: '',
+    message: '',
+    type: 'info',
+    show: false,
+    progress: 100,
+  });
 
   // Default columns for new boards
   const defaultColumns: Column[] = [
@@ -42,6 +60,34 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
     { id: 'in-progress', name: 'In Progress', order: 2, tasks: [] },
     { id: 'completed', name: 'Completed', order: 3, tasks: [] },
   ];
+
+  // Toast helper function
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const toastId = Date.now().toString();
+    setToast({ id: toastId, message, type, show: true, progress: 100 });
+    
+    // Animate progress bar
+    const duration = 4000;
+    const interval = 50;
+    const steps = duration / interval;
+    const progressStep = 100 / steps;
+    
+    let currentProgress = 100;
+    const progressInterval = setInterval(() => {
+      currentProgress -= progressStep;
+      if (currentProgress <= 0) {
+        clearInterval(progressInterval);
+        setToast(prev => ({ ...prev, show: false }));
+      } else {
+        setToast(prev => ({ ...prev, progress: currentProgress }));
+      }
+    }, interval);
+  };
+
+  // Manual dismiss function
+  const dismissToast = () => {
+    setToast(prev => ({ ...prev, show: false }));
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -149,13 +195,13 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
           ? { ...task, columnId: task.columnId } // Keep original columnId
           : task
       ));
-      alert('Failed to move task. Please try again.');
+      showToast('Failed to move task. Please try again.', 'error');
     }
   };
 
     const handleCreateTask = async () => {
     if (!taskForm.title.trim()) {
-      alert('Please enter a task title');
+      showToast('Please enter a task title', 'error');
       return;
     }
 
@@ -198,9 +244,11 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
       // Refresh tasks
       const boardTasks = await taskService.getTasks(resolvedParams.boardId);
       setTasks(boardTasks);
+      
+      showToast('Task created successfully!', 'success');
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('Failed to create task. Please try again.');
+      showToast('Failed to create task. Please try again.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -208,7 +256,7 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
 
     const handleEditTask = async () => {
     if (!editingTask || !taskForm.title.trim()) {
-      alert('Please enter a task title');
+      showToast('Please enter a task title', 'error');
       return;
     }
 
@@ -248,9 +296,40 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
       // Refresh tasks
       const boardTasks = await taskService.getTasks(resolvedParams.boardId);
       setTasks(boardTasks);
+      
+      showToast('Task updated successfully!', 'success');
     } catch (error) {
       console.error('Error updating task:', error);
-      alert('Failed to update task. Please try again.');
+      showToast('Failed to update task. Please try again.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateBoard = async () => {
+    if (!board || !boardForm.name.trim()) {
+      showToast('Please enter a board name', 'error');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      const updates = {
+        name: boardForm.name.trim(),
+        description: boardForm.description.trim(),
+      };
+
+      await boardService.updateBoard(board.id, updates);
+      
+      // Update local board state
+      setBoard(prev => prev ? { ...prev, ...updates } : null);
+      setShowEditBoard(false);
+      
+      showToast('Board updated successfully!', 'success');
+    } catch (error) {
+      console.error('Error updating board:', error);
+      showToast('Failed to update board. Please try again.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -274,9 +353,11 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
       setTasks(prev => prev.filter(task => task.id !== taskId));
       setShowDeleteConfirm(false);
       setTaskToDelete(null);
+      
+      showToast('Task deleted successfully!', 'success');
     } catch (error) {
       console.error('Error deleting task:', error);
-      alert('Failed to delete task. Please try again.');
+      showToast('Failed to delete task. Please try again.', 'error');
     }
   };
 
@@ -445,7 +526,33 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
   const columns = board?.columns && board.columns.length > 0 ? board.columns : defaultColumns;
 
   return (
-    <div className="min-h-screen bg-[#f8f8f6] text-black">
+    <>
+      <style jsx>{`
+        .animation-delay-200 {
+          animation-delay: 200ms;
+        }
+        .animation-delay-500 {
+          animation-delay: 500ms;
+        }
+        @keyframes slideUpBounce {
+          0% {
+            transform: translateY(100%) scale(0.8);
+            opacity: 0;
+          }
+          60% {
+            transform: translateY(-10px) scale(1.05);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+          }
+        }
+        .toast-enter {
+          animation: slideUpBounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+      `}</style>
+      <div className="min-h-screen bg-[#f8f8f6] text-black">
       {/* Navigation */}
       <nav className="border-b border-gray-300 bg-white/90 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -467,8 +574,23 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
             
             <div className="flex items-center space-x-3">
               <button
+                onClick={() => {
+                  if (board) {
+                    setBoardForm({
+                      name: board.name,
+                      description: board.description || '',
+                    });
+                    setShowEditBoard(true);
+                  }
+                }}
+                className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 transition-colors flex items-center space-x-2"
+              >
+                <Edit className="w-4 h-4" />
+                <span>Edit Board</span>
+              </button>
+              <button
                 onClick={() => setShowCreateTask(true)}
-                className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 transition-colors flex items-center space-x-2"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Task</span>
@@ -666,6 +788,174 @@ export default function KanbanBoardPage({ params }: KanbanBoardProps) {
             </div>
           </div>
         )}
+
+        {/* Cool Animated Toast Notification */}
+        {toast.show && (
+          <div className={`
+            fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 
+            transition-all duration-500 ease-out toast-enter
+            ${toast.show ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'}
+          `}>
+            <div className={`
+              relative overflow-hidden rounded-xl shadow-2xl border font-mono text-sm max-w-md
+              backdrop-blur-sm transform hover:scale-105 transition-all duration-200
+              ${toast.type === 'success' 
+                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 text-green-900' 
+                : toast.type === 'error' 
+                ? 'bg-gradient-to-r from-red-50 to-rose-50 border-red-200 text-red-900' 
+                : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200 text-blue-900'
+              }
+            `}>
+              {/* Animated progress bar */}
+              <div className="absolute top-0 left-0 h-1 bg-gradient-to-r transition-all duration-100 ease-linear"
+                style={{ 
+                  width: `${toast.progress}%`,
+                  background: toast.type === 'success' 
+                    ? 'linear-gradient(90deg, #10b981, #059669)' 
+                    : toast.type === 'error' 
+                    ? 'linear-gradient(90deg, #ef4444, #dc2626)' 
+                    : 'linear-gradient(90deg, #3b82f6, #2563eb)'
+                }}
+              />
+              
+              {/* Glowing border effect */}
+              <div className={`
+                absolute inset-0 rounded-xl opacity-20 blur-sm
+                ${toast.type === 'success' 
+                  ? 'bg-green-400' 
+                  : toast.type === 'error' 
+                  ? 'bg-red-400' 
+                  : 'bg-blue-400'
+                }
+              `} />
+              
+              {/* Content */}
+              <div className="relative px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    {/* Animated Icon */}
+                    <div className={`
+                      w-8 h-8 rounded-full flex items-center justify-center
+                      animate-pulse
+                      ${toast.type === 'success' 
+                        ? 'bg-green-100 text-green-600' 
+                        : toast.type === 'error' 
+                        ? 'bg-red-100 text-red-600' 
+                        : 'bg-blue-100 text-blue-600'
+                      }
+                    `}>
+                      {toast.type === 'success' && (
+                        <CheckCircle className="w-5 h-5 animate-bounce" />
+                      )}
+                      {toast.type === 'error' && (
+                        <XCircle className="w-5 h-5 animate-pulse" />
+                      )}
+                      {toast.type === 'info' && (
+                        <Info className="w-5 h-5 animate-pulse" />
+                      )}
+                    </div>
+                    
+                    {/* Message */}
+                    <div>
+                      <p className="font-bold text-sm">{toast.message}</p>
+                      <p className="text-xs opacity-70 mt-1">
+                        {toast.type === 'success' && '✨ Success!'}
+                        {toast.type === 'error' && '⚠️ Error occurred'}
+                        {toast.type === 'info' && 'ℹ️ Information'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Close button */}
+                  <button
+                    onClick={dismissToast}
+                    className={`
+                      ml-4 p-1 rounded-full hover:bg-black/10 transition-all duration-200
+                      opacity-60 hover:opacity-100 transform hover:scale-110
+                    `}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Sparkle effects for success */}
+              {toast.type === 'success' && (
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute top-2 right-4 w-1 h-1 bg-green-400 rounded-full animate-ping" />
+                  <div className="absolute top-6 right-8 w-1 h-1 bg-emerald-400 rounded-full animate-ping animation-delay-200" />
+                  <div className="absolute bottom-4 left-6 w-1 h-1 bg-green-300 rounded-full animate-ping animation-delay-500" />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Edit Board Modal */}
+        {showEditBoard && (
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md border border-gray-200">
+              <div className="p-6">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center">
+                    <Edit className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold font-mono">Edit Board</h2>
+                    <p className="text-gray-600 font-mono text-sm">Update board details</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="block text-sm font-bold font-mono text-gray-700 mb-2">
+                      Board Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={boardForm.name}
+                      onChange={(e) => setBoardForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
+                      placeholder="Enter board name"
+                      maxLength={50}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-bold font-mono text-gray-700 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      value={boardForm.description}
+                      onChange={(e) => setBoardForm(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 resize-none"
+                      placeholder="Enter board description (optional)"
+                      rows={3}
+                      maxLength={200}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => setShowEditBoard(false)}
+                    className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg font-mono font-bold text-sm hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUpdateBoard}
+                    disabled={isSubmitting || !boardForm.name.trim()}
+                    className="flex-1 px-4 py-2 bg-gray-800 text-white rounded-lg font-mono font-bold text-sm hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? 'Updating...' : 'Update Board'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    );
-  } 
+    </>
+  );
+} 

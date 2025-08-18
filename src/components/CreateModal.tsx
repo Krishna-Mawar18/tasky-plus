@@ -57,7 +57,7 @@ export default function CreateModal({ isOpen, onClose, type, onSubmit, workspace
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-xl"
         onClick={handleClose}
       />
       
@@ -66,7 +66,7 @@ export default function CreateModal({ isOpen, onClose, type, onSubmit, workspace
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center">
               <Plus className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -98,7 +98,7 @@ export default function CreateModal({ isOpen, onClose, type, onSubmit, workspace
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={`Enter ${type} name...`}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               required
             />
           </div>
@@ -113,7 +113,7 @@ export default function CreateModal({ isOpen, onClose, type, onSubmit, workspace
               onChange={(e) => setDescription(e.target.value)}
               placeholder={`Describe your ${type}...`}
               rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent resize-none"
             />
           </div>
 
@@ -152,7 +152,7 @@ export default function CreateModal({ isOpen, onClose, type, onSubmit, workspace
             <button
               type="submit"
               disabled={!name.trim() || isSubmitting}
-              className="flex-1 px-4 py-3 bg-black text-white rounded-lg font-mono font-bold text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              className="flex-1 px-4 py-3 bg-gray-800 text-white rounded-lg font-mono font-bold text-sm hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {isSubmitting ? (
                 <>

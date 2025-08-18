@@ -15,6 +15,7 @@ import {
   arrayUnion
 } from 'firebase/firestore';
 import { Workspace, Board, Task, QuickStats } from '@/types';
+import { enhancedNotificationService } from './notificationService';
 
 // Workspace Services
 export const workspaceService = {
@@ -25,16 +26,12 @@ export const workspaceService = {
     }
     
     try {
-      console.log('Creating workspace:', workspace);
-      
       // Create the workspace
       const docRef = await addDoc(collection(db, 'workspaces'), {
         ...workspace,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      
-      console.log('Workspace created with ID:', docRef.id);
       
       // Update user's workspaces array
       const userRef = doc(db, 'users', workspace.ownerId);
@@ -43,7 +40,17 @@ export const workspaceService = {
         updatedAt: serverTimestamp(),
       });
       
-      console.log('User workspace list updated');
+      // Send notification for workspace creation
+      try {
+        await enhancedNotificationService.notifyWorkspaceCreated(
+          workspace.ownerId,
+          workspace.name,
+          docRef.id
+        );
+      } catch (notificationError) {
+        console.warn('Failed to send workspace creation notification:', notificationError);
+      }
+      
       return docRef.id;
     } catch (error) {
       console.error('Error creating workspace:', error);
@@ -58,14 +65,10 @@ export const workspaceService = {
     }
     
     try {
-      console.log('Fetching workspaces for user:', userId);
-      
       // First, get user's workspace list
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
       const userWorkspaces = userSnap.exists() ? userSnap.data().workspaces || [] : [];
-      
-      console.log('User workspace list:', userWorkspaces);
       
       // Also query workspaces where user is a member
       const q = query(
@@ -73,13 +76,10 @@ export const workspaceService = {
         where('members', 'array-contains', userId)
       );
       const snapshot = await getDocs(q);
-      console.log('Workspaces where user is member:', snapshot.docs.length, 'documents found');
       
       // Combine both approaches to get all workspaces
       const workspaceIds = new Set([...userWorkspaces]);
       snapshot.docs.forEach(doc => workspaceIds.add(doc.id));
-      
-      console.log('Combined workspace IDs:', Array.from(workspaceIds));
       
       // Fetch all workspaces
       const workspaces: Workspace[] = [];
@@ -100,19 +100,41 @@ export const workspaceService = {
         }
       }
       
-      console.log('Processed workspaces:', workspaces);
-      
       // Sort by updatedAt on the client side
       const sortedWorkspaces = workspaces.sort((a, b) => {
         if (!a.updatedAt || !b.updatedAt) return 0;
         return b.updatedAt.getTime() - a.updatedAt.getTime();
       });
       
-      console.log('Sorted workspaces:', sortedWorkspaces);
       return sortedWorkspaces;
     } catch (error) {
       console.error('Error fetching workspaces:', error);
       return [];
+    }
+  },
+
+  async getWorkspace(workspaceId: string): Promise<Workspace | null> {
+    if (!db) {
+      console.error('Firestore database is not initialized');
+      return null;
+    }
+    
+    try {
+      const docRef = doc(db, 'workspaces', workspaceId);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data(),
+          createdAt: docSnap.data().createdAt?.toDate(),
+          updatedAt: docSnap.data().updatedAt?.toDate(),
+        } as Workspace;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching workspace:', error);
+      return null;
     }
   },
 
@@ -234,6 +256,23 @@ export const taskService = {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    
+    // Send notification if task is assigned to someone
+    if (task.assigneeId && task.assigneeId !== task.assigneeName) {
+      try {
+        await enhancedNotificationService.notifyTaskAssigned(
+          task.assigneeId,
+          task.title,
+          task.assigneeName || 'Someone',
+          task.workspaceId || '',
+          task.boardId,
+          docRef.id
+        );
+      } catch (notificationError) {
+        console.warn('Failed to send task assignment notification:', notificationError);
+      }
+    }
+    
     return docRef.id;
   },
 
@@ -261,11 +300,50 @@ export const taskService = {
 
   async updateTask(id: string, updates: Partial<Task>): Promise<void> {
     if (!db) throw new Error('Firebase not configured');
+    
+    // Get the current task to check for changes
+    const currentTaskDoc = await getDoc(doc(db, 'tasks', id));
+    const currentTask = currentTaskDoc.exists() ? currentTaskDoc.data() as Task : null;
+    
     const docRef = doc(db, 'tasks', id);
     await updateDoc(docRef, {
       ...updates,
       updatedAt: serverTimestamp(),
     });
+    
+    // Send notifications for relevant changes
+    if (currentTask) {
+      try {
+        // Notify if task is completed
+        if (updates.status === 'completed' && currentTask.status !== 'completed') {
+          await enhancedNotificationService.createNotification(
+            currentTask.assigneeId || currentTask.workspaceId || '',
+            'taskCompleted',
+            { taskTitle: currentTask.title },
+            { 
+              taskId: id, 
+              workspaceId: currentTask.workspaceId, 
+              boardId: currentTask.boardId 
+            },
+            `/workspace/${currentTask.workspaceId}/board/${currentTask.boardId}`
+          );
+        }
+        
+        // Notify if task is reassigned
+        if (updates.assigneeId && updates.assigneeId !== currentTask.assigneeId) {
+          await enhancedNotificationService.notifyTaskAssigned(
+            updates.assigneeId,
+            currentTask.title,
+            updates.assigneeName || 'Someone',
+            currentTask.workspaceId || '',
+            currentTask.boardId,
+            id
+          );
+        }
+      } catch (notificationError) {
+        console.warn('Failed to send task update notification:', notificationError);
+      }
+    }
   },
 
   async deleteTask(id: string): Promise<void> {
@@ -337,17 +415,40 @@ export const searchService = {
 export const notificationService = {
   async getNotifications(userId: string) {
     if (!db) return [];
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate(),
-    }));
+    try {
+      const q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+      }));
+    } catch (error: any) {
+      // If index doesn't exist, fallback to simple query without ordering
+      if (error?.code === 'failed-precondition' || error?.message?.includes('index')) {
+        console.warn('Firestore index not found, using fallback query for notifications');
+        const fallbackQuery = query(
+          collection(db, 'notifications'),
+          where('userId', '==', userId)
+        );
+        const snapshot = await getDocs(fallbackQuery);
+        const notifications = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+        }));
+        // Sort on client side as fallback
+        return notifications.sort((a: any, b: any) => {
+          if (!a.createdAt || !b.createdAt) return 0;
+          return b.createdAt.getTime() - a.createdAt.getTime();
+        });
+      }
+      throw error;
+    }
   },
 
   async markAsRead(notificationId: string) {

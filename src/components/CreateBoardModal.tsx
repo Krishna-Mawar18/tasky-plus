@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { X, Plus, Palette } from 'lucide-react';
@@ -71,6 +71,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
     setIsSubmitting(true);
     try {
       const templateColumns = getTemplateColumns(formData.template);
+      
       await onSubmit({
         name: formData.name.trim(),
         description: formData.description.trim(),
@@ -78,7 +79,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
         columns: templateColumns
       });
       
-      // Reset form
+      // Reset form and close modal
       setFormData({
         name: '',
         description: '',
@@ -88,6 +89,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
       onClose();
     } catch (error) {
       console.error('Error creating board:', error);
+      alert('Failed to create board. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -98,9 +100,10 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
   };
 
   const getTemplateColumns = (templateName: string) => {
-    const template = boardTemplates.find(t => 
-      t.name.toLowerCase().replace(' ', '-') === templateName
-    );
+    const template = boardTemplates.find(t => {
+      const normalizedName = t.name.toLowerCase().replace(/\s+/g, '-');
+      return normalizedName === templateName;
+    });
     return template ? template.columns : boardTemplates[0].columns;
   };
 
@@ -110,13 +113,13 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-40 animate-fadein"
+        className="fixed inset-0 bg-black/50 backdrop-blur-xl z-40 animate-fadein"
         onClick={onClose}
       />
       
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slidein">
+        <div className="bg-white backdrop-blur-md rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slidein border border-gray-200">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-t-xl">
             <h2 className="text-2xl font-bold font-mono">Create New Board</h2>
@@ -138,7 +141,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
               <select
                 value={formData.workspaceId}
                 onChange={(e) => setFormData(prev => ({ ...prev, workspaceId: e.target.value }))}
-                className="w-full p-3 border border-gray-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400"
+                className="w-full p-3 border border-gray-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 transition-all duration-200 hover:border-gray-400"
                 required
               >
                 <option value="">Select a workspace</option>
@@ -165,7 +168,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="Enter board name"
-                className="w-full p-3 border border-gray-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400"
+                className="w-full p-3 border border-gray-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 transition-all duration-200 hover:border-gray-400"
                 required
               />
             </div>
@@ -180,7 +183,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Describe your board (optional)"
                 rows={3}
-                className="w-full p-3 border border-gray-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none transition-all duration-200 hover:border-gray-400"
+                className="w-full p-3 border border-gray-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 resize-none transition-all duration-200 hover:border-gray-400"
               />
             </div>
 
@@ -190,30 +193,46 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
                 Choose Template
               </label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {boardTemplates.map((template, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => handleTemplateChange(template.name.toLowerCase().replace(' ', '-'))}
-                    className={`p-4 border-2 rounded-lg text-left transition-all duration-300 hover:scale-105 ${
-                      formData.template === template.name.toLowerCase().replace(' ', '-')
-                        ? 'border-blue-500 bg-blue-50 shadow-lg'
-                        : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
-                    }`}
-                  >
-                    <h3 className="font-mono font-bold text-sm mb-1">{template.name}</h3>
-                    <p className="text-xs text-gray-600 mb-2">{template.description}</p>
-                    <div className="flex items-center space-x-1">
-                      {template.columns.map((column, colIndex) => (
-                        <div
-                          key={colIndex}
-                          className="w-2 h-2 bg-gray-300 rounded-full"
-                        />
-                      ))}
-                    </div>
-                  </button>
-                ))}
+                {boardTemplates.map((template, index) => {
+                  const templateId = template.name.toLowerCase().replace(/\s+/g, '-');
+                  const isSelected = formData.template === templateId;
+                  
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => handleTemplateChange(templateId)}
+                      className={`p-4 border-2 rounded-lg text-left transition-all duration-300 hover:scale-105 ${
+                        isSelected
+                          ? 'border-gray-400 bg-gray-50 shadow-lg ring-2 ring-gray-200'
+                          : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-mono font-bold text-sm">{template.name}</h3>
+                        {isSelected && (
+                          <div className="w-2 h-2 bg-gray-600 rounded-full"></div>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mb-2">{template.description}</p>
+                      <div className="flex items-center space-x-1">
+                        {template.columns.map((column, colIndex) => (
+                          <div
+                            key={colIndex}
+                            className={`w-2 h-2 rounded-full ${
+                              isSelected ? 'bg-gray-500' : 'bg-gray-300'
+                            }`}
+                            title={column.name}
+                          />
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+              <p className="text-xs text-gray-500 mt-2 font-mono">
+                Selected: <span className="font-bold">{formData.template}</span>
+              </p>
             </div>
 
             {/* Actions */}
@@ -228,7 +247,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
               <button
                 type="submit"
                 disabled={isSubmitting || !formData.name.trim() || !formData.workspaceId || workspaces.length === 0}
-                className="px-6 py-2 bg-black text-white font-mono font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 hover:scale-105 shadow-lg hover:shadow-xl"
+                className="px-6 py-2 bg-black text-white font-mono font-bold rounded-lg hover:bg-white hover:text-black hover:border-black border-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 hover:scale-105 shadow-lg hover:shadow-xl"
               >
                 {isSubmitting ? (
                   <>

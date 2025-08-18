@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Trash2, CheckCircle, AlertCircle, Info, Clock, Bell, Filter } from 'lucide-react';
-import { notificationService } from '@/lib/services';
+import { enhancedNotificationService } from '@/lib/notificationService';
 import NotificationCard from './NotificationCard';
 
 interface Notification {
@@ -11,7 +11,16 @@ interface Notification {
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
+  category: 'task' | 'workspace' | 'system' | 'reminder';
   read: boolean;
+  actionUrl?: string;
+  metadata?: {
+    taskId?: string;
+    workspaceId?: string;
+    boardId?: string;
+    assignerId?: string;
+    assignerName?: string;
+  };
   createdAt: Date;
 }
 
@@ -31,7 +40,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
       const loadNotifications = async () => {
         try {
           setIsLoading(true);
-          const userNotifications = await notificationService.getNotifications(userId);
+          const userNotifications = await enhancedNotificationService.getNotifications(userId, 50);
           setNotifications(userNotifications as Notification[]);
         } catch (error) {
           console.error('Error loading notifications:', error);
@@ -45,9 +54,21 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
     }
   }, [isOpen, userId]);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
   const handleDeleteNotification = async (notificationId: string) => {
     try {
-      await notificationService.deleteNotification(notificationId);
+      await enhancedNotificationService.deleteNotification(notificationId);
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
     } catch (error) {
       console.error('Error deleting notification:', error);
@@ -56,7 +77,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-      await notificationService.markAsRead(notificationId);
+      await enhancedNotificationService.markAsRead(notificationId);
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
       );
@@ -78,19 +99,19 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
       {/* Backdrop */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-40"
+          className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-sm z-40"
           onClick={onClose}
         />
       )}
       
       {/* Drawer */}
-      <div className={`fixed top-0 right-0 h-full w-96 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-50 ${
-        isOpen ? 'translate-x-0' : 'translate-x-full'
+      <div className={`fixed top-4 right-4 bottom-4 w-96 bg-white rounded-2xl shadow-2xl transform transition-all duration-300 ease-in-out z-50 border border-gray-200 ${
+        isOpen ? 'translate-x-0 opacity-100 scale-100' : 'translate-x-full opacity-0 scale-95'
       }`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50 rounded-t-2xl">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
               <Bell className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -102,9 +123,9 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white rounded-lg transition-colors"
+            className="p-2 hover:bg-white rounded-xl transition-all duration-200 hover:shadow-md border border-gray-200 hover:border-gray-300"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 text-gray-600 hover:text-gray-900" />
           </button>
         </div>
 
@@ -120,7 +141,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
               onClick={() => setFilter(tab.key as 'all' | 'unread' | 'read')}
               className={`flex-1 py-3 px-4 text-sm font-mono font-bold transition-colors ${
                 filter === tab.key
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
+                  ? 'text-gray-800 border-b-2 border-gray-600 bg-white'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
@@ -133,7 +154,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center p-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500"></div>
             </div>
           ) : filteredNotifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-gray-500">
@@ -166,7 +187,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
 
         {/* Footer */}
         {notifications.length > 0 && (
-          <div className="p-4 border-t border-gray-200 bg-gray-50">
+          <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
             <div className="flex items-center justify-between text-sm text-gray-600 font-mono">
               <span>{filteredNotifications.length} of {notifications.length} notifications</span>
               <button
@@ -176,7 +197,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
                     if (!n.read) handleMarkAsRead(n.id);
                   });
                 }}
-                className="text-blue-600 hover:text-blue-800 font-bold"
+                className="text-gray-600 hover:text-gray-800 font-bold"
               >
                 Mark all as read
               </button>

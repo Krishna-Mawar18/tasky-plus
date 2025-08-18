@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, CheckCircle, AlertCircle, Info, Clock, Trash2, Bell, Filter } from 'lucide-react';
-import { notificationService } from '@/lib/services';
+import { enhancedNotificationService } from '@/lib/notificationService';
 import NotificationCard from './NotificationCard';
 
 interface Notification {
@@ -11,18 +11,27 @@ interface Notification {
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
+  category: 'task' | 'workspace' | 'system' | 'reminder';
   read: boolean;
+  actionUrl?: string;
+  metadata?: {
+    taskId?: string;
+    workspaceId?: string;
+    boardId?: string;
+    assignerId?: string;
+    assignerName?: string;
+  };
   createdAt: Date;
 }
 
 interface NotificationPopupProps {
   isOpen: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   userId: string;
   onNotificationUpdate?: () => void;
 }
 
-export default function NotificationPopup({ isOpen, onClose, userId, onNotificationUpdate }: NotificationPopupProps) {
+export default function NotificationPopup({ isOpen, onCloseAction, userId, onNotificationUpdate }: NotificationPopupProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
@@ -32,7 +41,7 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
       const loadNotifications = async () => {
         try {
           setIsLoading(true);
-          const userNotifications = await notificationService.getNotifications(userId);
+          const userNotifications = await enhancedNotificationService.getNotifications(userId, 20);
           setNotifications(userNotifications as Notification[]);
         } catch (error) {
           console.error('Error loading notifications:', error);
@@ -55,7 +64,7 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
 
   const handleDeleteNotification = async (notificationId: string) => {
     try {
-      await notificationService.deleteNotification(notificationId);
+      await enhancedNotificationService.deleteNotification(notificationId);
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
       onNotificationUpdate?.();
     } catch (error) {
@@ -65,7 +74,7 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-      await notificationService.markAsRead(notificationId);
+      await enhancedNotificationService.markAsRead(notificationId);
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
       );
@@ -90,15 +99,15 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-sm z-[90] animate-fadein"
-        onClick={onClose}
+        onClick={onCloseAction}
       />
       
       {/* Popup */}
       <div className="fixed top-20 right-4 w-96 max-h-[calc(100vh-6rem)] bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-gray-200 z-[95] animate-slidein">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50 rounded-t-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50 rounded-t-2xl">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shadow-lg">
+            <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center shadow-lg">
               <Bell className="w-4 h-4 text-white" />
             </div>
             <div>
@@ -112,7 +121,7 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={onCloseAction}
             className="p-1.5 hover:bg-white rounded-lg transition-all duration-200 hover:scale-110"
           >
             <X className="w-4 h-4" />
@@ -131,7 +140,7 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
               onClick={() => setFilter(tab.key as 'all' | 'unread' | 'read')}
               className={`flex-1 py-2 px-3 text-xs font-mono font-bold transition-all duration-200 ${
                 filter === tab.key
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-white shadow-sm'
+                  ? 'text-gray-800 border-b-2 border-gray-600 bg-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
               } ${notifications.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={notifications.length === 0}
@@ -177,8 +186,8 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
                 >
                   <NotificationCard
                     notification={notification}
-                    onMarkAsRead={handleMarkAsRead}
-                    onDelete={handleDeleteNotification}
+                    onMarkAsReadAction={handleMarkAsRead}
+                    onDeleteAction={handleDeleteNotification}
                   />
                 </div>
               ))}
@@ -199,7 +208,7 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
                   });
                   onNotificationUpdate?.();
                 }}
-                className="text-blue-600 hover:text-blue-800 font-bold"
+                className="text-gray-800 hover:text-gray-900 font-bold"
               >
                 Mark all as read
               </button>

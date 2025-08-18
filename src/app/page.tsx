@@ -10,7 +10,7 @@ import { CheckSquare, ListTodo, Zap, Palette, Shield, Smartphone, ArrowUpDown, P
 const features = [
   {
     icon: (
-      <svg className="w-14 h-14 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-14 h-14 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth={2} />
       </svg>
     ),
@@ -95,7 +95,7 @@ const tips = [
 ];
 
 const howItWorks = [
-  { icon: <ListTodo className="w-12 h-12 text-blue-500" />, title: 'Add Tasks', desc: 'Quickly jot down what needs to get done.' },
+  { icon: <ListTodo className="w-12 h-12 text-gray-600" />, title: 'Add Tasks', desc: 'Quickly jot down what needs to get done.' },
   { icon: <ArrowUpDown className="w-12 h-12 text-green-500" />, title: 'Organize', desc: 'Drag and drop to prioritize and group.' },
   { icon: <PartyPopper className="w-12 h-12 text-purple-500" />, title: 'Complete', desc: 'Check off tasks and celebrate progress!' },
 ];
@@ -233,7 +233,7 @@ export default function HomePage() {
               <div className="w-20 h-20 bg-black rounded-lg flex items-center justify-center text-white text-2xl font-bold shadow-lg hover:scale-110 transition-transform duration-300 animate-bounce-slow">
                 Tasky
               </div>
-              <div className="absolute -top-1 -right-1 w-8 h-8 bg-blue-500 rounded-full animate-float"></div>
+              <div className="absolute -top-1 -right-1 w-8 h-8 bg-gray-500 rounded-full animate-float"></div>
               <div className="absolute -bottom-1 -left-1 w-5 h-5 bg-pink-500 rounded-full animate-float-reverse"></div>
             </div>
           </div>
@@ -255,7 +255,7 @@ export default function HomePage() {
 
 
           {/* Random tip card */}
-          <div className="bg-blue-100 text-blue-900 font-mono rounded-lg shadow px-4 py-2 mb-6 animate-fadein w-fit mx-auto text-sm">
+          <div className="bg-gray-100 text-gray-800 font-mono rounded-lg shadow px-4 py-2 mb-6 animate-fadein w-fit mx-auto text-sm">
             <span className="font-bold">Tip:</span> {tips[tipIdx]}
           </div>
 
@@ -270,10 +270,10 @@ export default function HomePage() {
                 setShowConfetti(true);
                 signInWithGoogle();
               }}
-              className="bg-black text-white px-10 py-5 rounded-lg font-mono font-bold text-base shadow-lg hover:bg-blue-600 hover:scale-105 transition-all duration-200 relative overflow-hidden group"
+              className="bg-black text-white px-10 py-5 rounded-lg font-mono font-bold text-base shadow-lg hover:bg-gray-800 hover:scale-105 transition-all duration-200 relative overflow-hidden group"
             >
               <span className="relative z-10">Get Started Free</span>
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-gray-600 to-gray-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </button>
           </div>
         </div>
@@ -297,7 +297,7 @@ export default function HomePage() {
               <div className="font-mono font-bold text-base mb-2">Demo Board</div>
               <div className="flex flex-col gap-1">
                 {kanbanTasks.map((t, i) => (
-                  <div key={t.id} className={`flex items-center gap-2 px-2 py-1 rounded-md font-mono text-sm transition-all duration-200 ${t.done ? 'bg-green-100 text-green-700 line-through' : 'bg-gray-100 hover:bg-blue-100 cursor-pointer'}`} onClick={() => setKanbanTasks(ts => ts.map((tt, idx) => idx === i ? { ...tt, done: !tt.done } : tt))}>
+                  <div key={t.id} className={`flex items-center gap-2 px-2 py-1 rounded-md font-mono text-sm transition-all duration-200 ${t.done ? 'bg-green-100 text-green-700 line-through' : 'bg-gray-100 hover:bg-gray-100 cursor-pointer'}`} onClick={() => setKanbanTasks(ts => ts.map((tt, idx) => idx === i ? { ...tt, done: !tt.done } : tt))}>
                     <span className={`w-3 h-3 rounded-full border-2 ${t.done ? 'bg-green-400 border-green-600' : 'border-gray-400'}`}></span>
                     {t.text}
                   </div>
@@ -335,7 +335,7 @@ export default function HomePage() {
           </div>
           <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg">
             <div className="mb-3">
-              <Smartphone className="w-8 h-8 text-blue-500" />
+              <Smartphone className="w-8 h-8 text-gray-600" />
             </div>
             <h3 className="font-mono font-bold text-lg mb-2 text-gray-900">Works Everywhere</h3>
             <p className="text-gray-700 font-mono text-sm">Access your tasks on any device, anywhere, anytime.</p>
@@ -436,18 +436,18 @@ export default function HomePage() {
                     name="email" 
                     placeholder="your_email@gmail.com"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" 
                   />
                   <textarea 
                     name="message" 
                     placeholder="Your feedback here..." 
                     required
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none" 
                   />
                   <button 
                     type="submit"
-                    className="w-full bg-black text-white px-4 py-2 rounded-lg font-mono text-sm font-bold hover:bg-blue-600 transition-colors"
+                    className="w-full bg-black text-white px-4 py-2 rounded-lg font-mono text-sm font-bold hover:bg-gray-800 transition-colors"
                   >
                     Send Feedback
                   </button>
