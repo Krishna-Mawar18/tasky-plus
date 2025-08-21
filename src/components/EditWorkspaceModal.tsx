@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Edit } from 'lucide-react';
+import { Edit } from 'lucide-react';
 import { Workspace } from '@/types';
 
 interface EditWorkspaceModalProps {

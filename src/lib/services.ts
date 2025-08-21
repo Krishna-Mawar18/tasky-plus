@@ -454,7 +454,7 @@ export const notificationService = {
       }));
     } catch (error: unknown) {
       // If index doesn't exist, fallback to simple query without ordering
-      if ((error as any)?.code === 'failed-precondition' || (error as any)?.message?.includes('index')) {
+      if ((error as { code?: string; message?: string })?.code === 'failed-precondition' || (error as { code?: string; message?: string })?.message?.includes('index')) {
         console.warn('Firestore index not found, using fallback query for notifications');
         const fallbackQuery = query(
           collection(db, 'notifications'),
@@ -488,7 +488,7 @@ export const notificationService = {
     await deleteDoc(docRef);
   },
 
-  async createNotification(notification: Omit<any, 'id' | 'createdAt'>) {
+  async createNotification(notification: { userId: string; title: string; message: string; type: string; read: boolean }) {
     if (!db) throw new Error('Firebase not configured');
     await addDoc(collection(db, 'notifications'), {
       ...notification,

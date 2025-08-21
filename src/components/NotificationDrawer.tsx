@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Trash2 } from 'lucide-react';
+import { X, Bell } from 'lucide-react';
 import { enhancedNotificationService } from '@/lib/notificationService';
 import NotificationCard from './NotificationCard';
 
@@ -176,8 +176,8 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
                 >
                   <NotificationCard
                     notification={notification}
-                    onMarkAsRead={handleMarkAsRead}
-                    onDelete={handleDeleteNotification}
+                    onMarkAsReadAction={handleMarkAsRead}
+                    onDeleteAction={handleDeleteNotification}
                   />
                 </div>
               ))}

@@ -1316,8 +1316,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {recentTasks.slice(0, 8).map((task, index) => {
-                    const workspace = workspaces.find(w => w.id === task.workspaceId);
+                  {recentTasks.slice(0, 8).map((task) => {
                     const completedColumnIds = ['completed', 'done', 'resolved'];
                     const isCompleted = task.status === 'completed' || completedColumnIds.includes(task.columnId.toLowerCase());
                     
@@ -1484,9 +1483,9 @@ export default function DashboardPage() {
       {/* Create Workspace Modal */}
       <CreateModal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onCloseAction={() => setShowCreateModal(false)}
         type="workspace"
-        onSubmit={handleCreateSubmit}
+        onSubmitAction={handleCreateSubmit}
       />
 
       {/* Create Board Modal */}
@@ -1512,7 +1511,7 @@ export default function DashboardPage() {
       {/* Notification Drawer */}
       <NotificationPopup
         isOpen={showNotificationDrawer}
-        onClose={() => setShowNotificationDrawer(false)}
+        onCloseAction={() => setShowNotificationDrawer(false)}
         userId={user?.uid || ''}
         onNotificationUpdate={updateNotificationCount}
       />

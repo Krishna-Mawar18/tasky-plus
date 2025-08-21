@@ -13,7 +13,6 @@ import {
   List,
   Clock,
   Edit,
-  Trash2,
   ArrowLeft,
   Target
 } from 'lucide-react';
