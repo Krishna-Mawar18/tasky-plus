@@ -666,9 +666,9 @@ export default function BoardPage() {
       {/* Edit Board Modal */}
       <EditBoardModal
         isOpen={showEditModal}
-        onCloseAction={() => setShowEditModal(false)}
+        onClose={() => setShowEditModal(false)}
         board={board}
-        onSubmitAction={handleEditBoard}
+        onSubmit={handleEditBoard}
       />
 
       {/* Edit Task Modal */}

@@ -1511,7 +1511,7 @@ export default function DashboardPage() {
       {/* Notification Drawer */}
       <NotificationPopup
         isOpen={showNotificationDrawer}
-        onCloseAction={() => setShowNotificationDrawer(false)}
+        onClose={() => setShowNotificationDrawer(false)}
         userId={user?.uid || ''}
         onNotificationUpdate={updateNotificationCount}
       />

@@ -592,15 +592,15 @@ export default function DashboardPage() {
       {/* Create Board Modal */}
       <CreateBoardModal
         isOpen={showCreateBoardModal}
-        onCloseAction={() => setShowCreateBoardModal(false)}
-        onSubmitAction={handleCreateBoardSubmit}
+        onClose={() => setShowCreateBoardModal(false)}
+        onSubmit={handleCreateBoardSubmit}
         workspaces={workspaces}
       />
 
       {/* Notification Drawer */}
       <NotificationDrawer
         isOpen={showNotificationDrawer}
-        onCloseAction={() => setShowNotificationDrawer(false)}
+        onClose={() => setShowNotificationDrawer(false)}
         userId={user.uid}
       />
 
