@@ -118,7 +118,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
       />
       
       {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <div className="bg-white backdrop-blur-md rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slidein border border-gray-200">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-t-xl">

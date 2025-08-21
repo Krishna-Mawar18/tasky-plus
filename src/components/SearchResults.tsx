@@ -8,11 +8,11 @@ interface SearchResultsProps {
     workspaces: Workspace[];
   };
   query: string;
-  onClose: () => void;
-  onNavigate: (type: 'workspace', id: string) => void;
+  onCloseAction: () => void;
+  onNavigateAction: (type: 'workspace', id: string) => void;
 }
 
-export default function SearchResults({ results, query, onClose, onNavigate }: SearchResultsProps) {
+export default function SearchResults({ results, query, onCloseAction, onNavigateAction }: SearchResultsProps) {
   const totalResults = results.workspaces.length;
 
   if (totalResults === 0) {
@@ -54,8 +54,8 @@ export default function SearchResults({ results, query, onClose, onNavigate }: S
                 <button
                   key={workspace.id}
                   onClick={() => {
-                    onNavigate('workspace', workspace.id);
-                    onClose();
+                    onNavigateAction('workspace', workspace.id);
+                    onCloseAction();
                   }}
                   className="w-full flex items-center space-x-3 p-3 hover:bg-blue-50 hover:scale-[1.02] rounded-lg transition-all duration-200 text-left group"
                   style={{ animationDelay: `${index * 0.05}s` }}

@@ -9,7 +9,7 @@ import { workspaceService, statsService, boardService } from '@/lib/services';
 import { Workspace, QuickStats, Board } from '@/types';
 import CreateModal from '@/components/CreateModal';
 import CreateBoardModal from '@/components/CreateBoardModal';
-
+import NotificationDrawer from '@/components/NotificationDrawer';
 
 export default function DashboardPage() {
   const { user, loading, logout, isFirebaseConfigured } = useAuth();
@@ -627,7 +627,12 @@ export default function DashboardPage() {
         workspaces={workspaces}
       />
 
-
+      {/* Notification Drawer */}
+      <NotificationDrawer
+        isOpen={showNotificationDrawer}
+        onClose={() => setShowNotificationDrawer(false)}
+        userId={user.uid}
+      />
 
       {/* Animations */}
       <style jsx global>{`

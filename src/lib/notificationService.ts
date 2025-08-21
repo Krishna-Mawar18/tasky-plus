@@ -69,7 +69,7 @@ export class EnhancedNotificationService {
       category: 'workspace'
     },
     welcomeMessage: {
-      title: 'Welcome to SPARK!',
+      title: 'Welcome to tasky!',
       message: 'Welcome to your productivity hub! Create your first workspace to get started.',
       type: 'success',
       category: 'system'

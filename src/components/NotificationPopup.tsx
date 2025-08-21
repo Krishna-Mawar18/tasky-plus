@@ -26,12 +26,12 @@ interface Notification {
 
 interface NotificationPopupProps {
   isOpen: boolean;
-  onCloseAction: () => void;
+  onClose: () => void;
   userId: string;
   onNotificationUpdate?: () => void;
 }
 
-export default function NotificationPopup({ isOpen, onCloseAction, userId, onNotificationUpdate }: NotificationPopupProps) {
+export default function NotificationPopup({ isOpen, onClose, userId, onNotificationUpdate }: NotificationPopupProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
@@ -99,7 +99,7 @@ export default function NotificationPopup({ isOpen, onCloseAction, userId, onNot
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-sm z-[90] animate-fadein"
-        onClick={onCloseAction}
+        onClick={onClose}
       />
       
       {/* Popup */}
@@ -121,7 +121,7 @@ export default function NotificationPopup({ isOpen, onCloseAction, userId, onNot
             </div>
           </div>
           <button
-            onClick={onCloseAction}
+            onClick={onClose}
             className="p-1.5 hover:bg-white rounded-lg transition-all duration-200 hover:scale-110"
           >
             <X className="w-4 h-4" />
@@ -186,8 +186,8 @@ export default function NotificationPopup({ isOpen, onCloseAction, userId, onNot
                 >
                   <NotificationCard
                     notification={notification}
-                    onMarkAsReadAction={handleMarkAsRead}
-                    onDeleteAction={handleDeleteNotification}
+                    onMarkAsRead={handleMarkAsRead}
+                    onDelete={handleDeleteNotification}
                   />
                 </div>
               ))}

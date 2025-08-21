@@ -6,9 +6,9 @@ import { Workspace } from '@/types';
 
 interface EditWorkspaceModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   workspace: Workspace | null;
-  onSubmit: (data: { name: string; description: string; color: string }) => void;
+  onSubmitAction: (data: { name: string; description: string; color: string }) => void;
 }
 
 const workspaceColors = [
@@ -16,7 +16,7 @@ const workspaceColors = [
   'bg-yellow-500', 'bg-red-500', 'bg-indigo-500', 'bg-teal-500'
 ];
 
-export default function EditWorkspaceModal({ isOpen, onClose, workspace, onSubmit }: EditWorkspaceModalProps) {
+export default function EditWorkspaceModal({ isOpen, onCloseAction, workspace, onSubmitAction }: EditWorkspaceModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedColor, setSelectedColor] = useState(workspaceColors[0]);
@@ -42,7 +42,7 @@ export default function EditWorkspaceModal({ isOpen, onClose, workspace, onSubmi
         description: description.trim(),
         color: selectedColor,
       };
-      await onSubmit(data);
+      await onSubmitAction(data);
       handleClose();
     } catch (error) {
       console.error('Error updating workspace:', error);
@@ -58,13 +58,13 @@ export default function EditWorkspaceModal({ isOpen, onClose, workspace, onSubmi
       setSelectedColor(workspace.color);
     }
     setIsSubmitting(false);
-    onClose();
+    onCloseAction();
   };
 
   if (!isOpen || !workspace) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-xl"
@@ -84,12 +84,6 @@ export default function EditWorkspaceModal({ isOpen, onClose, workspace, onSubmi
               <p className="text-sm text-gray-600 font-mono">Update workspace details</p>
             </div>
           </div>
-          <button
-            onClick={handleClose}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* Form */}
@@ -136,9 +130,9 @@ export default function EditWorkspaceModal({ isOpen, onClose, workspace, onSubmi
                   onClick={() => setSelectedColor(color)}
                   className={`w-12 h-12 rounded-lg border-2 transition-all duration-200 ${
                     selectedColor === color 
-                      ? 'border-black scale-110 shadow-lg' 
-                      : 'border-gray-300 hover:border-gray-400'
-                  } ${color}`}
+                    ? 'border-white scale-110 shadow-xl ring-1 ring-black/20' 
+                    : 'border-white/50 hover:border-white shadow-lg'
+                 } ${color}`}
                 />
               ))}
             </div>
@@ -149,14 +143,14 @@ export default function EditWorkspaceModal({ isOpen, onClose, workspace, onSubmi
             <button
               type="button"
               onClick={handleClose}
-              className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-mono font-bold text-sm hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-mono font-bold text-sm hover:bg-red-200 hover:border-red-500 hover:text-red-500 transition-all duration-200"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!name.trim() || isSubmitting}
-              className="flex-1 px-4 py-3 bg-black text-white rounded-lg font-mono font-bold text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              className="flex-1 px-4 py-3 bg-black text-white rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 disabled:bg-gray-400 disabled:border-gray-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {isSubmitting ? (
                 <>

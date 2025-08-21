@@ -4,10 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
-import { Plus, Search, Bell, Users, BarChart3, ArrowUpDown, PartyPopper, CheckSquare, ListTodo, Clock, Edit, Trash2, X, ChevronDown, Target, TrendingUp, LogOut, CheckCircle, Info, AlertCircle, User } from 'lucide-react';
-import { workspaceService, searchService, boardService, userService, taskService } from '@/lib/services';
+import { Plus, Search, Bell, Settings, Users, Calendar, BarChart3, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper, CheckSquare, ListTodo, Star, Clock, Tag, Filter, Edit, Trash2, X, FileText, ChevronDown, Target, TrendingUp, MoreVertical, LogOut, CheckCircle, Info, AlertCircle, User, Grid3X3 } from 'lucide-react';
+import { workspaceService, statsService, searchService, boardService, userService, taskService } from '@/lib/services';
 import { enhancedNotificationService } from '@/lib/notificationService';
-import { Workspace, QuickStats, Board, Task, Notification } from '@/types';
+import { Workspace, QuickStats, Board, Task } from '@/types';
 import CreateModal from '@/components/CreateModal';
 
 import EditWorkspaceModal from '@/components/EditWorkspaceModal';
@@ -15,12 +15,11 @@ import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import NotificationPopup from '@/components/NotificationPopup';
 import SearchResults from '@/components/SearchResults';
 
-
 export default function DashboardPage() {
   const { user, loading, logout, isFirebaseConfigured } = useAuth();
   const router = useRouter();
   const [imageError, setImageError] = useState(false);
-
+  const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ workspaces: Workspace[]; }>({ workspaces: [] });
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -30,7 +29,7 @@ export default function DashboardPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showNotificationDrawer, setShowNotificationDrawer] = useState(false);
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -51,13 +50,49 @@ export default function DashboardPage() {
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [selectedFilterWorkspace, setSelectedFilterWorkspace] = useState<string>('all');
   const [selectedFilterBoard, setSelectedFilterBoard] = useState<string>('all');
-
+  const [showStatsFilter, setShowStatsFilter] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [showBoardDropdown, setShowBoardDropdown] = useState(false);
 
+  // Function to manually refresh all data
+  const refreshData = useCallback(async () => {
+    if (!user || !isFirebaseConfigured) return;
+    
+    try {
+      // Reload workspaces and their boards
+      const liveWorkspaces = await workspaceService.getWorkspaces(user.uid);
+      setWorkspaces(liveWorkspaces);
+      
+      // Fetch boards for each workspace
+      const boardsData: Record<string, Board[]> = {};
+      for (const workspace of liveWorkspaces) {
+        try {
+          const boards = await boardService.getBoards(workspace.id);
+          boardsData[workspace.id] = boards;
+        } catch (error) {
+          boardsData[workspace.id] = [];
+        }
+      }
+      setWorkspaceBoards(boardsData);
+      
+      // Load all tasks from all boards
+      await loadAllTasks(boardsData);
+      
+      setLastRefresh(Date.now());
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  }, [user, isFirebaseConfigured]);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/');
+    }
+  }, [user, loading, router]);
+
   // Function to load all tasks from all boards
-  const loadAllTasks = useCallback(async (boardsData: Record<string, Board[]>) => {
+  const loadAllTasks = async (boardsData: Record<string, Board[]>) => {
     const allTasksArray: Task[] = [];
     
     for (const workspaceId in boardsData) {
@@ -89,7 +124,7 @@ export default function DashboardPage() {
     setRecentTasks(sortedTasks.slice(0, 10));
     
     calculateStats(allTasksArray);
-  }, []);
+  };
 
   // Function to calculate stats based on filtered tasks
   const calculateStats = (tasks: Task[]) => {
@@ -117,42 +152,6 @@ export default function DashboardPage() {
       productivityScore,
     });
   };
-
-  // Function to manually refresh all data
-  const refreshData = useCallback(async () => {
-    if (!user || !isFirebaseConfigured) return;
-    
-    try {
-      // Reload workspaces and their boards
-      const liveWorkspaces = await workspaceService.getWorkspaces(user.uid);
-      setWorkspaces(liveWorkspaces);
-      
-      // Fetch boards for each workspace
-      const boardsData: Record<string, Board[]> = {};
-      for (const workspace of liveWorkspaces) {
-        try {
-          const boards = await boardService.getBoards(workspace.id);
-          boardsData[workspace.id] = boards;
-        } catch (error) {
-          boardsData[workspace.id] = [];
-        }
-      }
-      setWorkspaceBoards(boardsData);
-      
-      // Load all tasks from all boards
-      await loadAllTasks(boardsData);
-      
-      setLastRefresh(Date.now());
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    }
-  }, [user, isFirebaseConfigured, loadAllTasks]);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/');
-    }
-  }, [user, loading, router]);
 
   // Effect to recalculate stats when filters change
   useEffect(() => {
@@ -203,7 +202,7 @@ export default function DashboardPage() {
     return () => {
       if (unsubscribeRef.current) unsubscribeRef.current();
     };
-  }, [user, isFirebaseConfigured, loadAllTasks]);
+  }, [user, isFirebaseConfigured]);
 
   // Auto-refresh when window gains focus (user comes back to dashboard)
   useEffect(() => {
@@ -254,7 +253,10 @@ export default function DashboardPage() {
     await logout();
   }, [logout]);
 
-
+  // Optimize navigation function
+  const handleGoToSetup = useCallback(() => {
+    router.push('/');
+  }, [router]);
 
   const handleCreateWorkspace = useCallback(() => {
     setShowCreateModal(true);
@@ -306,7 +308,7 @@ export default function DashboardPage() {
 
 
   // 2. Add error boundaries and user-friendly error messages for all async actions
-  const handleCreateSubmit = useCallback(async (data: { name: string; description?: string; type: 'workspace' | 'board' }) => {
+  const handleCreateSubmit = useCallback(async (data: any) => {
     if (!user) return;
     setError(null);
     try {
@@ -314,7 +316,6 @@ export default function DashboardPage() {
         ...data,
         ownerId: user.uid,
         members: [user.uid],
-        color: 'bg-gray-500', // Default color
       });
       await userService.addWorkspaceToUser(user.uid, workspaceId);
       setShowCreateModal(false);
@@ -397,9 +398,9 @@ export default function DashboardPage() {
       // Force a re-render by updating the page
       window.location.reload();
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating profile:', err);
-      setError(err instanceof Error ? err.message : 'Error updating profile. Please try again.');
+      setError(err.message || 'Error updating profile. Please try again.');
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -417,8 +418,8 @@ export default function DashboardPage() {
       if (accountAge < oneDayInMs) {
         await enhancedNotificationService.notifyWelcome(user.uid);
       }
-    } catch (error) {
-      if (error instanceof Error && error.message?.includes('index')) {
+    } catch (error: any) {
+      if (error?.message?.includes('index')) {
         console.warn('Firestore index not created yet. Welcome notification will be created once the index is available.');
       } else {
         console.error('Error creating welcome notification:', error);
@@ -450,7 +451,7 @@ export default function DashboardPage() {
     try {
       const userNotifications = await enhancedNotificationService.getNotifications(user.uid, 20);
       setNotifications(userNotifications);
-      const unreadCount = userNotifications.filter((n) => !n.read).length;
+      const unreadCount = userNotifications.filter((n: any) => !n.read).length;
       setNotificationCount(unreadCount);
     } catch (error) {
       console.error('Error loading notifications:', error);
@@ -470,7 +471,29 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-
+  // Test function to create a sample workspace (for debugging)
+  const createSampleWorkspace = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const workspaceId = await workspaceService.createWorkspace({
+        name: 'Sample Workspace',
+        description: 'This is a sample workspace for testing',
+        color: 'bg-gray-500',
+        ownerId: user.uid,
+        members: [user.uid],
+      });
+      
+      // Also add workspace to user's workspace list
+      await userService.addWorkspaceToUser(user.uid, workspaceId);
+      
+      // Refresh workspaces
+      const userWorkspaces = await workspaceService.getWorkspaces(user.uid);
+      setWorkspaces(userWorkspaces);
+    } catch (error) {
+      console.error('Error creating sample workspace:', error);
+    }
+  }, [user]);
 
   // Function to ensure user profile exists
   const ensureUserProfile = useCallback(async () => {
@@ -499,7 +522,7 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-[#f8f8f6] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <div className="text-black text-xl font-mono animate-pulse">Loading SPARK...</div>
+          <div className="text-black text-xl font-mono animate-pulse">Loading tasky...</div>
         </div>
       </div>
     );
@@ -521,7 +544,27 @@ export default function DashboardPage() {
     );
   }
 
+  const UserAvatar = () => {
+    if (!user.photoURL || imageError) {
+      return (
+        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
+          <span className="text-white font-bold text-sm">{userInitials}</span>
+        </div>
+      );
+    }
 
+    return (
+      <Image
+        src={user.photoURL}
+        alt={user.displayName || 'User'}
+        width={32}
+        height={32}
+        className="rounded-full"
+        onError={() => setImageError(true)}
+        priority
+      />
+    );
+  };
 
   const UserProfileImage = () => {
     if (!user.photoURL || imageError) {
@@ -545,7 +588,23 @@ export default function DashboardPage() {
     );
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'in-progress': return 'bg-gray-100 text-gray-800';
+      case 'todo': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'text-red-600';
+      case 'medium': return 'text-yellow-600';
+      case 'low': return 'text-green-600';
+      default: return 'text-gray-600';
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#f8f8f6] text-black relative overflow-x-hidden">
@@ -553,30 +612,20 @@ export default function DashboardPage() {
       <div className="absolute -top-32 -left-32 w-[400px] h-[400px] bg-gradient-to-br from-blue-200 via-pink-100 to-yellow-100 rounded-full blur-3xl opacity-60 animate-blob1 z-0" />
       <div className="absolute top-1/2 right-0 w-[300px] h-[300px] bg-gradient-to-br from-pink-200 via-blue-100 to-yellow-100 rounded-full blur-2xl opacity-50 animate-blob2 z-0" />
       
-      {/* Notebook lines background */}
-      <div aria-hidden className="absolute inset-0 z-0 pointer-events-none">
-        {[...Array(37)].map((_, i) => (
-          <div
-            key={i}
-            className="w-full h-0.5 border-t border-dashed border-gray-200 opacity-60 shadow-[0_1px_0_0_rgba(0,0,0,0.03)]"
-            style={{ position: 'absolute', top: `${i * 2.2}rem` }}
-          />
-        ))}
-      </div>
 
       {/* Navigation */}
       <nav className="border-b border-gray-300 bg-white/90 backdrop-blur-sm relative z-[60]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <div className="flex items-center space-x-3">
-              <Image src="/tasky_logo.svg" alt="Tasky Logo" width={40} height={40} className="transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
-              <span className="text-2xl font-extrabold font-mono tracking-tight">SPARK</span>
+          <div className="flex justify-between items-center h-16 sm:h-20">
+            <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+              <img src="/tasky_logo.svg" alt="Tasky Logo" className="w-8 h-8 sm:w-10 sm:h-10 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
+              <span className="text-xl sm:text-2xl font-extrabold font-mono tracking-tight">tasky</span>
             </div>
             
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-1 justify-end">
               {/* Search Bar */}
-              <div className="relative z-[80]">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black w-4 h-4" />
+              <div className="relative z-[80] flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black w-3 h-3 sm:w-4 sm:h-4" />
                 <input
                   type="text"
                   placeholder="Search workspaces..."
@@ -591,7 +640,7 @@ export default function DashboardPage() {
                     // Delay hiding to allow clicking on results
                     setTimeout(() => setShowSearchResults(false), 200);
                   }}
-                  className="pl-10 pr-4 py-2.5 w-64 md:w-80 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 bg-white/90 backdrop-blur-sm transition-all duration-200"
+                  className="pl-8 sm:pl-10 pr-8 sm:pr-4 py-2 sm:py-2.5 w-full border border-gray-300 rounded-lg font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 bg-white/90 backdrop-blur-sm transition-all duration-200"
                 />
                 {searchQuery && (
                   <button
@@ -600,9 +649,9 @@ export default function DashboardPage() {
                       setShowSearchResults(false);
                       setSearchResults({ workspaces: [] });
                     }}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
                 )}
                 {showSearchResults && (
@@ -610,15 +659,15 @@ export default function DashboardPage() {
                     <SearchResults
                       results={searchResults}
                       query={searchQuery}
-                      onClose={handleCloseSearch}
-                      onNavigate={handleSearchNavigate}
+                      onCloseAction={handleCloseSearch}
+                      onNavigateAction={handleSearchNavigate}
                     />
                   </div>
                 )}
               </div>
 
               {/* Notifications */}
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 <button 
                   onClick={() => {
                     setShowNotificationPanel(!showNotificationPanel);
@@ -630,10 +679,10 @@ export default function DashboardPage() {
                   className="relative p-2 text-gray-600 hover:text-black hover:bg-gray-100 rounded-lg transition-all duration-200 z-[70]"
                   data-notification-button
                 >
-                  <Bell className="w-5 h-5" />
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
                   {notificationCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold animate-pulse">
-                      {notificationCount}
+                    <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold animate-pulse">
+                      {notificationCount > 9 ? '9+' : notificationCount}
                     </span>
                   )}
                 </button>
@@ -653,7 +702,7 @@ export default function DashboardPage() {
                         <div>
                           <h3 className="font-mono font-bold text-gray-900">Notifications</h3>
                           <p className="text-xs text-gray-600 font-mono">
-                            {notifications.filter((n) => !n.read).length} unread
+                            {notifications.filter((n: any) => !n.read).length} unread
                           </p>
                         </div>
                       </div>
@@ -673,11 +722,11 @@ export default function DashboardPage() {
                             <Bell className="w-6 h-6 text-gray-300" />
                           </div>
                           <p className="font-mono font-bold mb-1">No notifications</p>
-                          <p className="text-sm text-center">You&apos;re all caught up!</p>
+                          <p className="text-sm text-center">You're all caught up!</p>
                         </div>
                       ) : (
                         <div className="p-3 space-y-3">
-                          {notifications.slice(0, 5).map((notification, index: number) => (
+                          {notifications.slice(0, 5).map((notification: any, index: number) => (
                             <div
                               key={notification.id}
                               className={`p-3 rounded-lg border transition-all duration-200 hover:shadow-sm ${
@@ -1144,99 +1193,154 @@ export default function DashboardPage() {
                      // Workspace Card Container
                      <div 
                        key={workspace.id} 
-                       className="bg-gray-50 border border-gray-200 rounded-xl p-6 hover:shadow-xl hover:border-gray-300 transition-all duration-300 cursor-pointer animate-fadein group"
+                       className="group relative bg-white rounded-2xl p-6 shadow-lg hover:shadow-2xl transition-all duration-500 cursor-pointer animate-fadein border border-gray-100 hover:border-gray-200 hover:-translate-y-2 overflow-hidden"
                        style={{ animationDelay: `${0.1 * index}s` }}
                        onClick={() => router.push(`/workspace/${workspace.id}`)}
                      >
-                       {/* Workspace Header - Name and Action Buttons */}
-                       <div className="flex items-center justify-between mb-4">
-                         {/* Workspace Name and Color Dot */}
-                         <div className="flex items-center space-x-3">
-                           <div className={`w-3 h-3 rounded-full ${workspace.color} group-hover:scale-125 transition-transform duration-200`}></div>
-                           <h3 className="font-mono font-bold text-xl text-gray-800 group-hover:text-gray-700 transition-colors duration-200">{workspace.name}</h3>
-                         </div>
-                         {/* Edit and Delete Action Buttons */}
-                         <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                           {/* Edit Workspace Button */}
-                           <button
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               handleEditWorkspace(workspace);
-                             }}
-                             className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all duration-200 rounded-lg"
-                             title="Edit workspace"
-                           >
-                             <Edit className="w-4 h-4" />
-                           </button>
-                           {/* Delete Workspace Button */}
-                           <button
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               handleDeleteWorkspace(workspace);
-                             }}
-                             className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-200 rounded-lg"
-                             title="Delete workspace"
-                           >
-                             <Trash2 className="w-4 h-4" />
-                           </button>
-                         </div>
-                       </div>
+                       {/* Background Gradient */}
+                       <div className="absolute inset-0 bg-gradient-to-br from-white via-gray-50/50 to-blue-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                        
-                       {/* Workspace Description and Member Count */}
-                       <div className="mb-4">
+                       {/* Content */}
+                       <div className="relative z-10">
+                         {/* Workspace Header - Name and Action Buttons */}
+                         <div className="flex items-start justify-between mb-4">
+                           {/* Workspace Name and Color Dot */}
+                           <div className="flex items-center space-x-3">
+                             <div className={`w-4 h-4 rounded-full ${workspace.color} shadow-lg group-hover:scale-125 group-hover:shadow-xl transition-all duration-300`}></div>
+                             <h3 className="font-bold text-lg text-gray-800 group-hover:text-gray-900 transition-colors duration-200 line-clamp-1">{workspace.name}</h3>
+                           </div>
+                           {/* Edit and Delete Action Buttons */}
+                           <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                             {/* Edit Workspace Button */}
+                             <button
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 handleEditWorkspace(workspace);
+                               }}
+                               className="relative w-9 h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
+                               title="Edit workspace"
+                             >
+                               <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                               <div className="absolute inset-0 flex items-center justify-center">
+                                 <Edit className="w-4 h-4 text-gray-600 group-hover/btn:text-blue-600 transition-colors duration-300" />
+                               </div>
+                             </button>
+                             {/* Delete Workspace Button */}
+                             <button
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 handleDeleteWorkspace(workspace);
+                               }}
+                               className="relative w-9 h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
+                               title="Delete workspace"
+                             >
+                               <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                               <div className="absolute inset-0 flex items-center justify-center">
+                                 <Trash2 className="w-4 h-4 text-gray-600 group-hover/btn:text-red-600 transition-colors duration-300" />
+                               </div>
+                             </button>
+                           </div>
+                         </div>
+                         
                          {/* Workspace Description */}
-                         <p className="text-sm text-gray-600 font-mono mb-2 line-clamp-2">
-                           {workspace.description || 'No description'}
-                         </p>
-                         {/* Member Count with Icon */}
-                         <div className="flex items-center space-x-2 text-xs text-gray-500 font-mono">
-                           <Users className="w-3 h-3" />
-                           <span>{workspace.members.length} member{workspace.members.length !== 1 ? 's' : ''}</span>
+                         {workspace.description ? (
+                           <p className="text-gray-600 text-sm leading-relaxed line-clamp-2 mb-6 group-hover:text-gray-700 transition-colors duration-200">
+                             {workspace.description}
+                           </p>
+                         ) : (
+                           <p className="text-gray-400 text-sm italic mb-6">No description</p>
+                         )}
+                         
+                         {/* Stats Section */}
+                         <div className="flex items-center justify-between mb-6">
+                           <div className="flex items-center space-x-4">
+                             {/* Members Count */}
+                             <div className="flex items-center space-x-2 text-gray-500 group-hover:text-gray-600 transition-colors duration-200">
+                               <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors duration-200">
+                                 <Users className="w-4 h-4 text-purple-600" />
+                               </div>
+                               <span className="text-sm font-medium">{workspace.members.length}</span>
+                             </div>
+                             {/* Boards Count */}
+                             <div className="flex items-center space-x-2 text-gray-500 group-hover:text-gray-600 transition-colors duration-200">
+                               <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors duration-200">
+                                 <Grid3X3 className="w-4 h-4 text-blue-600" />
+                               </div>
+                               <span className="text-sm font-medium">{boards.length}</span>
+                             </div>
+                           </div>
+                           
+                           {/* Arrow Icon */}
+                           <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center group-hover:bg-black group-hover:scale-110 transition-all duration-300">
+                             <svg className="w-4 h-4 text-gray-600 group-hover:text-white transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                             </svg>
+                           </div>
                          </div>
+                         
+                         {/* Boards Section */}
+                         {boards.length > 0 && (
+                           <div className="pt-4 border-t border-gray-200/60">
+                             {/* Boards Header */}
+                             <div className="flex items-center justify-between mb-4">
+                               <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                                 Recent Boards
+                               </p>
+                               <div className="text-xs text-gray-400 font-medium">
+                                 {boards.length} total
+                               </div>
+                             </div>
+                             {/* Board Tags */}
+                             <div className="flex flex-wrap gap-2">
+                               {/* First 3 Board Tags */}
+                               {boards.slice(0, 3).map((board, index) => (
+                                 <button
+                                   key={board.id}
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     router.push(`/workspace/${workspace.id}/board/${board.id}`);
+                                   }}
+                                   className="group/tag relative text-xs bg-white/90 backdrop-blur-sm border border-gray-200/80 hover:border-blue-300/80 px-3 py-2 rounded-xl font-medium transition-all duration-300 hover:scale-105 hover:shadow-md overflow-hidden"
+                                   style={{ animationDelay: `${index * 0.1}s` }}
+                                 >
+                                   <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-purple-50/50 opacity-0 group-hover/tag:opacity-100 transition-opacity duration-300"></div>
+                                   <div className="relative z-10">
+                                     <span className="text-gray-700 group-hover/tag:text-gray-900 transition-colors duration-300">
+                                       {board.name}
+                                     </span>
+                                   </div>
+                                 </button>
+                               ))}
+                               {/* "More Boards" Indicator */}
+                               {boards.length > 3 && (
+                                 <div className="relative text-xs text-gray-500 font-medium px-3 py-2 bg-gradient-to-r from-gray-50/80 to-gray-100/80 backdrop-blur-sm rounded-xl border border-gray-200/60 overflow-hidden">
+                                   <div className="absolute inset-0 bg-gradient-to-r from-gray-100/50 to-gray-200/50 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
+                                   <div className="relative z-10">
+                                     <span>+{boards.length - 3} more</span>
+                                   </div>
+                                 </div>
+                               )}
+                             </div>
+                           </div>
+                         )}
+                         
+                         {/* Empty State - No Boards */}
+                         {boards.length === 0 && (
+                           <div className="pt-4 border-t border-gray-200">
+                             <div className="text-center py-3">
+                               <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                                 <Plus className="w-4 h-4 text-gray-400" />
+                               </div>
+                               <p className="text-xs text-gray-400 font-medium">No boards yet</p>
+                             </div>
+                           </div>
+                         )}
                        </div>
                        
-                       {/* Boards Section */}
-                       {boards.length > 0 && (
-                         <div className="pt-4 border-t border-gray-100">
-                           {/* Boards Header */}
-                           <div className="flex items-center justify-between mb-3">
-                             <p className="text-xs font-mono font-bold text-gray-700 uppercase tracking-wide">
-                               Boards ({boards.length})
-                             </p>
-                           </div>
-                           {/* Board Tags */}
-                           <div className="flex flex-wrap gap-2">
-                             {/* First 3 Board Tags */}
-                             {boards.slice(0, 3).map((board) => (
-                               <button
-                                 key={board.id}
-                                 onClick={(e) => {
-                                   e.stopPropagation();
-                                   router.push(`/workspace/${workspace.id}/board/${board.id}`);
-                                 }}
-                                 className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full font-mono transition-all duration-200 hover:scale-105"
-                               >
-                                 {board.name}
-                               </button>
-                             ))}
-                             {/* "More Boards" Indicator */}
-                             {boards.length > 3 && (
-                               <span className="text-xs text-gray-500 font-mono px-3 py-1.5">
-                                 +{boards.length - 3} more
-                               </span>
-                             )}
-                           </div>
-                         </div>
-                       )}
-                       
-                       {/* Empty State - No Boards */}
-                       {boards.length === 0 && (
-                         <div className="pt-4 border-t border-gray-100">
-                           <p className="text-xs font-mono text-gray-400 text-center py-2">
-                             No boards yet
-                           </p>
-                         </div>
-                       )}
+                       {/* Hover Shine Effect */}
+                       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                         <div className="absolute top-0 -left-4 w-6 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 group-hover:animate-pulse"></div>
+                       </div>
                      </div>
                    );
                  })}
@@ -1253,23 +1357,27 @@ export default function DashboardPage() {
             </div>
             
             {/* Recent Tasks */}
-            <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg animate-fadein" style={{ animationDelay: '0.2s' }}>
+            <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 animate-fadein" style={{ animationDelay: '0.2s' }}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold font-mono">Recent Tasks</h2>
-                <span className="text-sm text-gray-500 font-mono">Last 10 tasks</span>
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-black to-black rounded-xl flex items-center justify-center shadow-lg">
+                    <ListTodo className="w-5 h-5 text-white" />
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-800">Recent Tasks</h2>
+                </div>
               </div>
               
               {recentTasks.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 font-mono">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
                     <ListTodo className="w-8 h-8 text-gray-400" />
                   </div>
-                  <p className="text-lg font-bold mb-2">No tasks yet</p>
-                  <p className="text-sm">Create boards and add tasks to see them here</p>
+                  <h3 className="text-lg font-semibold text-gray-700 mb-2">No tasks yet</h3>
+                  <p className="text-gray-500 text-sm">Tasks will appear here as you create them</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {recentTasks.map((task, index) => {
+                  {recentTasks.slice(0, 8).map((task, index) => {
                     const workspace = workspaces.find(w => w.id === task.workspaceId);
                     const completedColumnIds = ['completed', 'done', 'resolved'];
                     const isCompleted = task.status === 'completed' || completedColumnIds.includes(task.columnId.toLowerCase());
@@ -1277,53 +1385,63 @@ export default function DashboardPage() {
                     return (
                       <div
                         key={task.id}
-                        className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-all duration-200 cursor-pointer hover:border-gray-300"
-                        style={{ animationDelay: `${index * 0.05}s` }}
+                        className="group relative bg-gradient-to-r from-white to-gray-50/50 border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-gray-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
                         onClick={() => {
                           if (task.workspaceId && task.boardId) {
                             router.push(`/workspace/${task.workspaceId}/board/${task.boardId}`);
                           }
                         }}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-mono font-bold text-gray-900 mb-1 line-clamp-1">{task.title}</h4>
-                            {task.description && (
-                              <p className="text-sm text-gray-600 font-mono mb-2 line-clamp-2">{task.description}</p>
-                            )}
-                            <div className="flex items-center space-x-2 flex-wrap gap-1">
-                              <span className="text-xs text-gray-500 font-mono">
-                                {workspace?.name || 'Unknown Workspace'}
-                              </span>
-                              <span className="text-xs text-gray-400">•</span>
-                              <span className="text-xs text-gray-500 font-mono">
-                                {task.boardName || 'Unknown Board'}
-                              </span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-mono font-bold ${
-                                isCompleted 
-                                  ? 'bg-green-100 text-green-800'
-                                  : task.columnId === 'in-progress'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {task.columnId.replace('-', ' ')}
-                              </span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-mono font-bold ${
-                                task.priority === 'high' 
-                                  ? 'bg-red-100 text-red-800'
-                                  : task.priority === 'medium'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : task.priority === 'low'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {task.priority}
-                              </span>
+                        <div className="relative">
+                          <div className="flex items-start justify-between mb-3">
+                            <h4 className="font-semibold text-gray-800 text-sm line-clamp-1 group-hover:text-gray-900 transition-colors duration-200 pr-2">
+                              {task.title}
+                            </h4>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                </div>
+                                <span className="text-xs font-medium text-gray-600">
+                                  {(task as any).boardName || 'Unknown Board'}
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center space-x-1">
+                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+                                  isCompleted ? 'bg-green-100' :
+                                  task.columnId === 'inprogress' || task.columnId === 'in-progress' ? 'bg-yellow-100' :
+                                  'bg-gray-100'
+                                }`}>
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    isCompleted ? 'bg-green-500' :
+                                    task.columnId === 'inprogress' || task.columnId === 'in-progress' ? 'bg-yellow-500' :
+                                    'bg-gray-500'
+                                  }`}></div>
+                                </div>
+                                <span className={`text-xs font-medium ${
+                                  isCompleted ? 'text-green-600' :
+                                  task.columnId === 'inprogress' || task.columnId === 'in-progress' ? 'text-yellow-600' :
+                                  'text-gray-600'
+                                }`}>
+                                  {task.columnId === 'inprogress' || task.columnId === 'in-progress' ? 'progress' : task.columnId}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-1 text-xs text-gray-500">
+                              <Clock className="w-3 h-3" />
+                              <span>{task.updatedAt ? new Date(task.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Recent'}</span>
                             </div>
                           </div>
-                          <div className="text-xs text-gray-500 font-mono ml-4 flex-shrink-0">
-                            {task.updatedAt ? new Date(task.updatedAt).toLocaleDateString() : 'Recently'}
-                          </div>
+                        </div>
+                        
+                        {/* Hover Shine Effect */}
+                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                          <div className="absolute top-0 -left-4 w-6 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 group-hover:animate-pulse"></div>
                         </div>
                       </div>
                     );
@@ -1438,9 +1556,9 @@ export default function DashboardPage() {
       {/* Edit Workspace Modal */}
       <EditWorkspaceModal
         isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
+        onCloseAction={() => setShowEditModal(false)}
         workspace={selectedWorkspace}
-        onSubmit={handleEditSubmit}
+        onSubmitAction={handleEditSubmit}
       />
 
       {/* Delete Confirmation Modal */}
@@ -1455,7 +1573,7 @@ export default function DashboardPage() {
       {/* Notification Drawer */}
       <NotificationPopup
         isOpen={showNotificationDrawer}
-        onCloseAction={() => setShowNotificationDrawer(false)}
+        onClose={() => setShowNotificationDrawer(false)}
         userId={user?.uid || ''}
         onNotificationUpdate={updateNotificationCount}
       />

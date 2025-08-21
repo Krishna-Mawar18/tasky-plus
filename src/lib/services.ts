@@ -223,6 +223,27 @@ export const boardService = {
     await deleteDoc(doc(db, 'boards', id));
   },
 
+  async getBoardsByWorkspace(workspaceId: string): Promise<Board[]> {
+    return this.getBoards(workspaceId);
+  },
+
+  async getBoard(boardId: string): Promise<Board | null> {
+    if (!db) return null;
+    const docRef = doc(db, 'boards', boardId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      return null;
+    }
+    
+    return {
+      id: docSnap.id,
+      ...docSnap.data(),
+      createdAt: docSnap.data().createdAt?.toDate(),
+      updatedAt: docSnap.data().updatedAt?.toDate(),
+    } as Board;
+  },
+
   subscribeToBoards(workspaceId: string, callback: (boards: Board[]) => void) {
     if (!db) return () => {};
     const q = query(
@@ -276,7 +297,7 @@ export const taskService = {
     return docRef.id;
   },
 
-  async getTasks(boardId: string): Promise<Task[]> {
+  async getTasksByBoard(boardId: string): Promise<Task[]> {
     if (!db) return [];
     const q = query(
       collection(db, 'tasks'),
@@ -296,6 +317,10 @@ export const taskService = {
       if (!a.createdAt || !b.createdAt) return 0;
       return a.createdAt.getTime() - b.createdAt.getTime();
     });
+  },
+
+  async getTasks(boardId: string): Promise<Task[]> {
+    return this.getTasksByBoard(boardId);
   },
 
   async updateTask(id: string, updates: Partial<Task>): Promise<void> {
