@@ -8,14 +8,11 @@ import {
   updateDoc, 
   deleteDoc, 
   getDocs, 
-  getDoc,
   query, 
   where, 
   orderBy,
   serverTimestamp,
-  onSnapshot,
-  limit,
-  writeBatch
+  limit
 } from 'firebase/firestore';
 
 export interface Notification {
@@ -147,7 +144,7 @@ export class EnhancedNotificationService {
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate() || new Date()
       })) as Notification[];
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.warn('Firestore index issue, using fallback query:', error);
       
       const fallbackQuery = query(
@@ -404,7 +401,7 @@ export class EnhancedNotificationService {
       }, {} as Record<string, typeof remainingNotifications>);
 
       // Delete older duplicates, keeping only the most recent one
-      for (const [key, group] of Object.entries(notificationGroups)) {
+      for (const [, group] of Object.entries(notificationGroups)) {
         if (group.length > 1) {
           // Sort by creation date (newest first) and keep only the first one
           const sorted = group.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -440,12 +437,13 @@ export const notificationService = {
     return await enhancedNotificationService.deleteNotification(notificationId);
   },
   
-  async createNotification(notification: any) {
+  async createNotification(notification: Omit<Notification, 'id'>) {
     return await enhancedNotificationService.createNotification(
       notification.userId,
       'welcomeMessage',
       {},
-      notification
+      notification.metadata,
+      notification.actionUrl
     );
   }
 };

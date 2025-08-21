@@ -7,18 +7,14 @@ import { workspaceService, boardService, taskService } from '@/lib/services';
 import { Workspace, Board, Task } from '@/types';
 import { 
   Plus, 
-  Settings, 
   Users, 
   Calendar,
-  BarChart3,
   Grid3X3,
   List,
   Clock,
-  Star,
   Edit,
   Trash2,
   ArrowLeft,
-  Folder,
   Target
 } from 'lucide-react';
 import EditWorkspaceModal from '../../../components/EditWorkspaceModal';
@@ -236,7 +232,7 @@ export default function WorkspacePage() {
               task.status === 'completed' || task.columnId === 'done'
             ).length;
             const activeTasks = totalTasks - completedTasks;
-            const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
 
             return (
               <>
@@ -456,7 +452,7 @@ export default function WorkspacePage() {
                         {/* Header */}
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center space-x-3">
-                            <div className={`w-4 h-4 rounded-full ${(board as any).color || 'bg-blue-500'} shadow-lg group-hover:scale-125 group-hover:shadow-xl transition-all duration-300`}></div>
+                            <div className={`w-4 h-4 rounded-full ${board.color || 'bg-blue-500'} shadow-lg group-hover:scale-125 group-hover:shadow-xl transition-all duration-300`}></div>
                             <h3 className="font-bold text-lg text-gray-800 group-hover:text-gray-900 transition-colors duration-200 line-clamp-1">{board.name}</h3>
                           </div>
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -480,7 +476,7 @@ export default function WorkspacePage() {
                               <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors duration-200">
                                 <List className="w-4 h-4 text-blue-600" />
                               </div>
-                              <span className="text-sm font-medium">{tasks.filter(t => (t as any).boardId === board.id).length}</span>
+                              <span className="text-sm font-medium">{tasks.filter(t => t.boardId === board.id).length}</span>
                             </div>
                             <div className="flex items-center space-x-2 text-gray-500 group-hover:text-gray-600 transition-colors duration-200">
                               <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors duration-200">
@@ -532,7 +528,7 @@ export default function WorkspacePage() {
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {tasks.slice(0, 8).map((task, index) => {
+                  {tasks.slice(0, 8).map((task) => {
                     const isCompleted = task.status === 'completed' || task.columnId === 'done';
                     
                     return (
@@ -540,8 +536,8 @@ export default function WorkspacePage() {
                         key={task.id}
                         className="group relative bg-gradient-to-r from-white to-gray-50/50 border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-gray-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
                         onClick={() => {
-                          if ((task as any).boardId) {
-                            router.push(`/workspace/${workspaceId}/board/${(task as any).boardId}`);
+                          if (task.boardId) {
+                            router.push(`/workspace/${workspaceId}/board/${task.boardId}`);
                           }
                         }}
                       >
@@ -559,7 +555,7 @@ export default function WorkspacePage() {
                                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                                 </div>
                                 <span className="text-xs font-medium text-gray-600">
-                                  {(task as any).boardName || 'Unknown'}
+                                  {task.boardName || 'Unknown'}
                                 </span>
                               </div>
                               

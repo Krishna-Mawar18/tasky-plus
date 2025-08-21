@@ -26,6 +26,7 @@ export interface Board {
   workspaceId: string;
   name: string;
   description?: string;
+  color?: string;
   columns: Column[];
   createdAt: Date;
   updatedAt: Date;
@@ -72,4 +73,15 @@ export interface QuickStats {
   completedTasks: number;
   pendingTasks: number;
   productivityScore: number;
+}
+
+export interface CreateWorkspaceData {
+  name: string;
+  description?: string;
+  color: string;
+}
+
+export interface CreateBoardData {
+  name: string;
+  description?: string;
 } 

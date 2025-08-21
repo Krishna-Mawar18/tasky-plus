@@ -61,7 +61,7 @@ export default function DeleteConfirmationModal({
           {/* Warning Message */}
           <div className="text-center mb-6">
             <h3 className="text-lg font-bold font-mono text-gray-800 mb-2">
-              Are you sure you want to delete "{workspace.name}"?
+              Are you sure you want to delete &quot;{workspace.name}&quot;?
             </h3>
             <p className="text-sm text-gray-600 font-mono">
               This will permanently delete the workspace and all its boards and tasks. 

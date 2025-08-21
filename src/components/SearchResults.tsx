@@ -1,7 +1,7 @@
 'use client';
 
-import { Workspace, Board, Task } from '@/types';
-import { Building2, Layout, CheckSquare, ArrowRight, Search, X } from 'lucide-react';
+import { Workspace } from '@/types';
+import { Building2, ArrowRight, Search } from 'lucide-react';
 
 interface SearchResultsProps {
   results: {
@@ -20,7 +20,7 @@ export default function SearchResults({ results, query, onCloseAction, onNavigat
       <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-2xl mt-2 p-6 z-[100] animate-fadein">
         <div className="flex items-center justify-center space-x-3 text-gray-500">
           <Search className="w-5 h-5 animate-pulse" />
-          <p className="font-mono text-sm">No workspaces found for "{query}"</p>
+          <p className="font-mono text-sm">No workspaces found for &quot;{query}&quot;</p>
         </div>
       </div>
     );
@@ -34,7 +34,7 @@ export default function SearchResults({ results, query, onCloseAction, onNavigat
           <div className="flex items-center space-x-2">
             <Search className="w-4 h-4 text-blue-500" />
             <p className="text-sm font-mono font-bold text-gray-700">
-              {totalResults} workspace{totalResults !== 1 ? 's' : ''} found for "{query}"
+              {totalResults} workspace{totalResults !== 1 ? 's' : ''} found for &quot;{query}&quot;
             </p>
           </div>
         </div>

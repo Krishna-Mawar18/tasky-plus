@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, AlertCircle, Info, Clock, Trash2, Bell, Filter } from 'lucide-react';
+import { X, Bell } from 'lucide-react';
 import { enhancedNotificationService } from '@/lib/notificationService';
 import NotificationCard from './NotificationCard';
 
@@ -186,8 +186,8 @@ export default function NotificationPopup({ isOpen, onClose, userId, onNotificat
                 >
                   <NotificationCard
                     notification={notification}
-                    onMarkAsRead={handleMarkAsRead}
-                    onDelete={handleDeleteNotification}
+                    onMarkAsReadAction={handleMarkAsRead}
+                    onDeleteAction={handleDeleteNotification}
                   />
                 </div>
               ))}

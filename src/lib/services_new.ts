@@ -6,7 +6,6 @@ import {
   updateDoc, 
   deleteDoc, 
   getDocs, 
-  getDoc, 
   query, 
   where, 
   orderBy,
@@ -313,7 +312,7 @@ export const notificationService = {
     await deleteDoc(docRef);
   },
 
-  async createNotification(notification: Omit<any, 'id' | 'createdAt'>) {
+  async createNotification(notification: { userId: string; title: string; message: string; type: string; read: boolean }) {
     if (!db) throw new Error('Firebase not configured');
     await addDoc(collection(db, 'notifications'), {
       ...notification,

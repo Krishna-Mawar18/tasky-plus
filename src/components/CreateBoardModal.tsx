@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Palette } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { Workspace } from '@/types';
 
 interface CreateBoardModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; description: string; workspaceId: string; columns?: any[] }) => void;
+  onSubmit: (data: { name: string; description: string; workspaceId: string; columns?: { id: string; name: string; order: number }[] }) => void;
   workspaces: Workspace[];
 }
 

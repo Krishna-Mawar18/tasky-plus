@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Plus, Palette, Users } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 
 interface CreateModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   type: 'workspace' | 'board';
-  onSubmit: (data: any) => void;
+  onSubmitAction: (data: { name: string; description: string; color: string }) => void;
   workspaceId?: string;
 }
 
@@ -16,7 +16,7 @@ const workspaceColors = [
   'bg-yellow-500', 'bg-red-500', 'bg-indigo-500', 'bg-teal-500'
 ];
 
-export default function CreateModal({ isOpen, onClose, type, onSubmit, workspaceId }: CreateModalProps) {
+export default function CreateModal({ isOpen, onCloseAction, type, onSubmitAction, workspaceId }: CreateModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedColor, setSelectedColor] = useState(workspaceColors[0]);
@@ -31,10 +31,10 @@ export default function CreateModal({ isOpen, onClose, type, onSubmit, workspace
       const data = {
         name: name.trim(),
         description: description.trim(),
-        ...(type === 'workspace' && { color: selectedColor }),
+        color: type === 'workspace' ? selectedColor : 'bg-blue-500',
         ...(type === 'board' && { workspaceId }),
       };
-      await onSubmit(data);
+      await onSubmitAction(data);
       handleClose();
     } catch (error) {
       console.error('Error creating', type, error);
@@ -48,7 +48,7 @@ export default function CreateModal({ isOpen, onClose, type, onSubmit, workspace
     setDescription('');
     setSelectedColor(workspaceColors[0]);
     setIsSubmitting(false);
-    onClose();
+    onCloseAction();
   };
 
   if (!isOpen) return null;

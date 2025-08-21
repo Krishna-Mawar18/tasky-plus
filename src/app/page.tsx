@@ -2,8 +2,9 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef, MutableRefObject } from 'react';
-import { CheckSquare, ListTodo, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import Image from 'next/image';
+import { ListTodo, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper } from 'lucide-react';
 
 const features = [
   {
@@ -38,41 +39,9 @@ const features = [
   },
 ];
 
-const whyTasky = [
-  {
-    title: 'For Teams',
-    desc: 'Collaborate, assign, and track progress together. Perfect for remote and hybrid teams.',
-    img: 'https://img.icons8.com/ios-filled/100/000000/conference-call.png',
-  },
-  {
-    title: 'For Students',
-    desc: 'Organize assignments, deadlines, and study notes in one place. Ace your academic life!',
-    img: 'https://img.icons8.com/ios-filled/100/000000/student-male.png',
-  },
-  {
-    title: 'For Creators',
-    desc: 'Plan content, brainstorm ideas, and manage creative projects with ease.',
-    img: 'https://img.icons8.com/ios-filled/100/000000/idea.png',
-  },
-];
 
-const testimonials = [
-  {
-    quote: 'Tasky transformed the way our team works. The real-time sync is a game changer!',
-    name: 'Alex P.',
-    role: 'Product Manager',
-  },
-  {
-    quote: 'I love the notebook feel and how easy it is to add tasks. My productivity has doubled!',
-    name: 'Samira K.',
-    role: 'Student',
-  },
-  {
-    quote: 'The best tool for creators. I can finally keep all my ideas organized and actionable.',
-    name: 'Chris L.',
-    role: 'Content Creator',
-  },
-];
+
+
 
 const tips = [
   'Use keyboard shortcuts to add tasks even faster!',
@@ -109,7 +78,7 @@ const faqs = [
 ];
 
 export default function HomePage() {
-  const { user, loading, signInWithGoogle, isFirebaseConfigured } = useAuth();
+  const { user, loading, signInWithGoogle } = useAuth();
   const router = useRouter();
   const [tipIdx, setTipIdx] = useState(0);
   const [faqOpen, setFaqOpen] = useState(-1);
@@ -202,7 +171,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
                           <div className="flex items-center space-x-3">
-                <img src="/tasky_logo.svg" alt="Tasky Logo" className="w-12 h-12 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
+                <Image src="/tasky_logo.svg" alt="Tasky Logo" width={48} height={48} className="w-12 h-12 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
                 <span className="text-3xl font-extrabold font-mono tracking-tight">Tasky</span>
               </div>
             <div className="flex items-center space-x-6">
@@ -368,7 +337,7 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <div className="flex items-center mb-2">
-                  <img src="/tasky_logo.svg" alt="Tasky Logo" className="w-8 h-8 mr-2" />
+                  <Image src="/tasky_logo.svg" alt="Tasky Logo" width={32} height={32} className="w-8 h-8 mr-2" />
                   <span className="font-mono font-bold text-lg">Tasky</span>
                 </div>
                 <p className="text-gray-600 font-mono text-sm mb-2">

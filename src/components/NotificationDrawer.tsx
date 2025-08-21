@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Trash2, CheckCircle, AlertCircle, Info, Clock, Bell, Filter } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import { enhancedNotificationService } from '@/lib/notificationService';
 import NotificationCard from './NotificationCard';
 
@@ -164,7 +164,7 @@ export default function NotificationDrawer({ isOpen, onClose, userId }: Notifica
               <p className="text-lg font-mono font-bold mb-2">
                 {filter === 'all' ? 'No notifications' : `No ${filter} notifications`}
               </p>
-              <p className="text-sm text-center">You're all caught up!</p>
+              <p className="text-sm text-center">You&apos;re all caught up!</p>
             </div>
           ) : (
             <div className="p-4 space-y-4">

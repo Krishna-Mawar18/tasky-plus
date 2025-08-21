@@ -4,9 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Image from 'next/image';
-import { Plus, Search, Bell, Settings, Users, Calendar, BarChart3, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper, CheckSquare, ListTodo, Star, Clock, Tag, Filter } from 'lucide-react';
+import { Plus, Search, Bell, Users, BarChart3, ArrowUpDown, PartyPopper, CheckSquare, ListTodo, Clock, Settings } from 'lucide-react';
 import { workspaceService, statsService, boardService } from '@/lib/services';
-import { Workspace, QuickStats, Board } from '@/types';
+import { Workspace, QuickStats, Board, CreateWorkspaceData } from '@/types';
+import { Notification } from '@/lib/notificationService';
 import CreateModal from '@/components/CreateModal';
 import CreateBoardModal from '@/components/CreateBoardModal';
 import NotificationDrawer from '@/components/NotificationDrawer';
@@ -15,7 +16,7 @@ export default function DashboardPage() {
   const { user, loading, logout, isFirebaseConfigured } = useAuth();
   const router = useRouter();
   const [imageError, setImageError] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateBoardModal, setShowCreateBoardModal] = useState(false);
@@ -23,7 +24,7 @@ export default function DashboardPage() {
   const [modalType, setModalType] = useState<'workspace' | 'board'>('workspace');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceBoards, setWorkspaceBoards] = useState<{ [workspaceId: string]: Board[] }>({});
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [quickStats, setQuickStats] = useState<QuickStats>({
     totalTasks: 0,
     completedTasks: 0,
@@ -70,25 +71,31 @@ export default function DashboardPage() {
           setNotifications([
             {
               id: '1',
+              userId: user.uid,
               title: 'Board Created',
               message: 'Your new board "Project Tasks" has been created successfully!',
               type: 'success',
+              category: 'workspace',
               read: false,
               createdAt: new Date(Date.now() - 1000 * 60 * 5),
             },
             {
               id: '2',
+              userId: user.uid,
               title: 'Task Assigned',
               message: 'You have been assigned a new task in "Design Board"',
               type: 'info',
+              category: 'task',
               read: true,
               createdAt: new Date(Date.now() - 1000 * 60 * 30),
             },
             {
               id: '3',
+              userId: user.uid,
               title: 'Workspace Updated',
               message: 'New member joined your "Personal Tasks" workspace',
               type: 'info',
+              category: 'workspace',
               read: false,
               createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
             },
@@ -136,10 +143,7 @@ export default function DashboardPage() {
     await logout();
   }, [logout]);
 
-  // Optimize navigation function
-  const handleGoToSetup = useCallback(() => {
-    router.push('/');
-  }, [router]);
+
 
   const handleCreateWorkspace = useCallback(() => {
     setModalType('workspace');
@@ -185,9 +189,11 @@ export default function DashboardPage() {
       setNotifications(prev => [
         {
           id: Date.now().toString(),
+          userId: user.uid,
           title: 'Board Created',
           message: `Board "${data.name}" has been created successfully!`,
           type: 'success',
+          category: 'workspace',
           read: false,
           createdAt: new Date(),
         },
@@ -206,7 +212,7 @@ export default function DashboardPage() {
     console.log('Invite team clicked');
   }, []);
 
-  const handleCreateSubmit = useCallback(async (data: any) => {
+  const handleCreateSubmit = useCallback(async (data: CreateWorkspaceData) => {
     if (!user) return;
 
     try {
@@ -253,27 +259,7 @@ export default function DashboardPage() {
   }
 
 
-  const UserAvatar = () => {
-    if (!user.photoURL || imageError) {
-      return (
-        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
-          <span className="text-white font-bold text-sm">{userInitials}</span>
-        </div>
-      );
-    }
 
-    return (
-      <Image
-        src={user.photoURL}
-        alt={user.displayName || 'User'}
-        width={32}
-        height={32}
-        className="rounded-full"
-        onError={() => setImageError(true)}
-        priority
-      />
-    );
-  };
 
   const UserProfileImage = () => {
     if (!user.photoURL || imageError) {
@@ -297,23 +283,7 @@ export default function DashboardPage() {
     );
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'in-progress': return 'bg-blue-100 text-blue-800';
-      case 'todo': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'text-red-600';
-      case 'medium': return 'text-yellow-600';
-      case 'low': return 'text-green-600';
-      default: return 'text-gray-600';
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[#f8f8f6] text-black relative overflow-x-hidden">
@@ -337,7 +307,7 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <div className="flex items-center space-x-3">
-              <img src="/tasky_logo.svg" alt="Tasky Logo" className="w-10 h-10 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
+              <Image src="/tasky_logo.svg" alt="Tasky Logo" width={40} height={40} className="w-10 h-10 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
               <span className="text-2xl font-extrabold font-mono tracking-tight">Tasky</span>
             </div>
             
@@ -622,8 +592,8 @@ export default function DashboardPage() {
       {/* Create Board Modal */}
       <CreateBoardModal
         isOpen={showCreateBoardModal}
-        onClose={() => setShowCreateBoardModal(false)}
-        onSubmit={handleCreateBoardSubmit}
+        onCloseAction={() => setShowCreateBoardModal(false)}
+        onSubmitAction={handleCreateBoardSubmit}
         workspaces={workspaces}
       />
 

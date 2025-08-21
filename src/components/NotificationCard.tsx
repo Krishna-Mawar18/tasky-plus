@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, CheckCircle, AlertCircle, Info, Clock, Trash2, Bell, ExternalLink } from 'lucide-react';
+import { CheckCircle, AlertCircle, Info, Clock, Trash2, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface Notification {
@@ -25,11 +25,11 @@ interface Notification {
 
 interface NotificationCardProps {
   notification: Notification;
-  onMarkAsRead: (id: string) => void;
-  onDelete: (id: string) => void;
+  onMarkAsReadAction: (id: string) => void;
+  onDeleteAction: (id: string) => void;
 }
 
-export default function NotificationCard({ notification, onMarkAsRead, onDelete }: NotificationCardProps) {
+export default function NotificationCard({ notification, onMarkAsReadAction, onDeleteAction }: NotificationCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const router = useRouter();
 
@@ -66,7 +66,7 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
       router.push(notification.actionUrl);
       // Mark as read when navigating
       if (!notification.read) {
-        onMarkAsRead(notification.id);
+        onMarkAsReadAction(notification.id);
       }
     }
   };
@@ -112,7 +112,7 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
                 e.stopPropagation();
                 router.push(notification.actionUrl!);
                 if (!notification.read) {
-                  onMarkAsRead(notification.id);
+                  onMarkAsReadAction(notification.id);
                 }
               }}
               className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-110"
@@ -125,7 +125,7 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onMarkAsRead(notification.id);
+                onMarkAsReadAction(notification.id);
               }}
               className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all duration-200 hover:scale-110"
               title="Mark as read"
@@ -136,7 +136,7 @@ export default function NotificationCard({ notification, onMarkAsRead, onDelete 
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onDelete(notification.id);
+              onDeleteAction(notification.id);
             }}
             className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-110"
             title="Delete notification"

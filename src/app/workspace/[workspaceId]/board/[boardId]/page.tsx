@@ -8,26 +8,13 @@ import { Board, Task } from '@/types';
 import { 
   ArrowLeft,
   Plus,
-  MoreHorizontal,
   Calendar,
-  User,
-  Tag,
   Clock,
-  MessageCircle,
-  Paperclip,
-  Star,
-  Settings,
-  Users,
-  Filter,
-  Search,
-  Grid3X3,
-  List as ListIcon,
   Edit,
   Trash2,
   CheckCircle,
   Circle,
   AlertCircle,
-  Bell,
   X
 } from 'lucide-react';
 import EditBoardModal from '../../../../../components/EditBoardModal';
@@ -679,9 +666,9 @@ export default function BoardPage() {
       {/* Edit Board Modal */}
       <EditBoardModal
         isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
+        onCloseAction={() => setShowEditModal(false)}
         board={board}
-        onSubmit={handleEditBoard}
+        onSubmitAction={handleEditBoard}
       />
 
       {/* Edit Task Modal */}
@@ -847,7 +834,7 @@ export default function BoardPage() {
                 {/* Task Preview */}
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <h3 className="font-mono font-bold text-gray-900 mb-2">
-                    "{taskToDelete.title}"
+                    &quot;{taskToDelete.title}&quot;
                   </h3>
                   {taskToDelete.description && (
                     <p className="text-sm text-gray-600 font-mono mb-2">

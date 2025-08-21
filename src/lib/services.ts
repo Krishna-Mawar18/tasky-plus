@@ -452,9 +452,9 @@ export const notificationService = {
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate(),
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If index doesn't exist, fallback to simple query without ordering
-      if (error?.code === 'failed-precondition' || error?.message?.includes('index')) {
+      if ((error as any)?.code === 'failed-precondition' || (error as any)?.message?.includes('index')) {
         console.warn('Firestore index not found, using fallback query for notifications');
         const fallbackQuery = query(
           collection(db, 'notifications'),
@@ -467,7 +467,7 @@ export const notificationService = {
           createdAt: doc.data().createdAt?.toDate(),
         }));
         // Sort on client side as fallback
-        return notifications.sort((a: any, b: any) => {
+        return notifications.sort((a, b) => {
           if (!a.createdAt || !b.createdAt) return 0;
           return b.createdAt.getTime() - a.createdAt.getTime();
         });
@@ -544,7 +544,7 @@ export const userService = {
     }
   },
 
-  async updateUser(userId: string, updates: any) {
+  async updateUser(userId: string, updates: Partial<{ displayName: string; email: string; photoURL: string }>) {
     if (!db) throw new Error('Firebase not configured');
     try {
       await updateDoc(doc(db, 'users', userId), {
