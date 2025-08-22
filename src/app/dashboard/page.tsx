@@ -1008,12 +1008,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-          <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105">
-            <div className="flex items-center justify-between">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-12">
+          <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1">
-                <p className="text-gray-600 font-mono text-sm">Total Tasks</p>
-                <p className="text-3xl font-bold font-mono group-hover:text-gray-700 transition-colors duration-200">{quickStats.totalTasks}</p>
+                <p className="text-gray-600 font-mono text-xs sm:text-sm">Total Tasks</p>
+                <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono group-hover:text-gray-700 transition-colors duration-200">{quickStats.totalTasks}</p>
                 <div className="mt-2 flex items-center space-x-2">
                   <div className="h-1 bg-gray-200 rounded-full flex-1">
                     <div 
@@ -1021,20 +1021,20 @@ export default function DashboardPage() {
                       style={{ width: quickStats.totalTasks > 0 ? '100%' : '0%' }}
                     />
                   </div>
-                  <span className="text-xs font-mono text-gray-500">
+                  <span className="text-xs font-mono text-gray-500 hidden sm:inline">
                     {(selectedFilterWorkspace !== 'all' || selectedFilterBoard !== 'all') ? 'Filtered' : 'All'}
                   </span>
                 </div>
               </div>
-              <CheckSquare className="w-8 h-8 text-gray-600 group-hover:scale-110 transition-transform duration-200" />
+              <CheckSquare className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-gray-600 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
             </div>
           </div>
           
-          <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.1s' }}>
-            <div className="flex items-center justify-between">
+          <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.1s' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1">
-                <p className="text-gray-600 font-mono text-sm">Completed</p>
-                <p className="text-3xl font-bold font-mono text-green-600 group-hover:text-green-700 transition-colors duration-200">{quickStats.completedTasks}</p>
+                <p className="text-gray-600 font-mono text-xs sm:text-sm">Completed</p>
+                <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono text-green-600 group-hover:text-green-700 transition-colors duration-200">{quickStats.completedTasks}</p>
                 <div className="mt-2 flex items-center space-x-2">
                   <div className="h-1 bg-green-100 rounded-full flex-1">
                     <div 
@@ -1047,15 +1047,15 @@ export default function DashboardPage() {
                   </span>
                 </div>
               </div>
-              <PartyPopper className="w-8 h-8 text-green-500 group-hover:scale-110 transition-transform duration-200" />
+              <PartyPopper className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-500 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
             </div>
           </div>
           
-          <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.2s' }}>
-            <div className="flex items-center justify-between">
+          <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.2s' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1">
-                <p className="text-gray-600 font-mono text-sm">Pending</p>
-                <p className="text-3xl font-bold font-mono text-orange-600 group-hover:text-orange-700 transition-colors duration-200">{quickStats.pendingTasks}</p>
+                <p className="text-gray-600 font-mono text-xs sm:text-sm">Pending</p>
+                <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono text-orange-600 group-hover:text-orange-700 transition-colors duration-200">{quickStats.pendingTasks}</p>
                 <div className="mt-2 flex items-center space-x-2">
                   <div className="h-1 bg-orange-100 rounded-full flex-1">
                     <div 
@@ -1068,15 +1068,15 @@ export default function DashboardPage() {
                   </span>
                 </div>
               </div>
-              <Clock className="w-8 h-8 text-orange-500 group-hover:scale-110 transition-transform duration-200" />
+              <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-500 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
             </div>
           </div>
           
-          <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.3s' }}>
-            <div className="flex items-center justify-between">
+          <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.3s' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1">
-                <p className="text-gray-600 font-mono text-sm">Productivity</p>
-                <p className="text-3xl font-bold font-mono text-purple-600 group-hover:text-purple-700 transition-colors duration-200">{quickStats.productivityScore}%</p>
+                <p className="text-gray-600 font-mono text-xs sm:text-sm">Productivity</p>
+                <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono text-purple-600 group-hover:text-purple-700 transition-colors duration-200">{quickStats.productivityScore}%</p>
                 <div className="mt-2 flex items-center space-x-2">
                   <div className="h-1 bg-purple-100 rounded-full flex-1">
                     <div 
@@ -1099,7 +1099,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
               </div>
-              <TrendingUp className={`w-8 h-8 group-hover:scale-110 transition-transform duration-200 ${
+              <TrendingUp className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto ${
                 quickStats.productivityScore >= 80 ? 'text-green-500' :
                 quickStats.productivityScore >= 60 ? 'text-yellow-500' :
                 quickStats.productivityScore >= 40 ? 'text-orange-500' : 'text-red-500'
@@ -1148,20 +1148,20 @@ export default function DashboardPage() {
                              <div className={`w-4 h-4 rounded-full ${workspace.color} shadow-lg group-hover:scale-125 group-hover:shadow-xl transition-all duration-300`}></div>
                              <h3 className="font-bold text-lg text-gray-800 group-hover:text-gray-900 transition-colors duration-200 line-clamp-1">{workspace.name}</h3>
                            </div>
-                           {/* Edit and Delete Action Buttons */}
-                           <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                                                     {/* Edit and Delete Action Buttons */}
+                          <div className="flex items-center space-x-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300">
                              {/* Edit Workspace Button */}
                              <button
                                onClick={(e) => {
                                  e.stopPropagation();
                                  handleEditWorkspace(workspace);
                                }}
-                               className="relative w-9 h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
+                               className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
                                title="Edit workspace"
                              >
-                               <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                               <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
                                <div className="absolute inset-0 flex items-center justify-center">
-                                 <Edit className="w-4 h-4 text-gray-600 group-hover/btn:text-blue-600 transition-colors duration-300" />
+                                 <Edit className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-blue-600 transition-colors duration-300" />
                                </div>
                              </button>
                              {/* Delete Workspace Button */}
@@ -1170,12 +1170,12 @@ export default function DashboardPage() {
                                  e.stopPropagation();
                                  handleDeleteWorkspace(workspace);
                                }}
-                               className="relative w-9 h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
+                               className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
                                title="Delete workspace"
                              >
-                               <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                               <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
                                <div className="absolute inset-0 flex items-center justify-center">
-                                 <Trash2 className="w-4 h-4 text-gray-600 group-hover/btn:text-red-600 transition-colors duration-300" />
+                                 <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-red-600 transition-colors duration-300" />
                                </div>
                              </button>
                            </div>

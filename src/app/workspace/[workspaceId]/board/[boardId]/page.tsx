@@ -550,26 +550,32 @@ export default function BoardPage() {
                         <h4 className="font-mono font-bold text-base text-gray-900 flex-1 pr-2 group-hover:text-blue-700 transition-colors leading-tight">
                           {task.title}
                         </h4>
-                        <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                        <div className="flex items-center space-x-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleEditTask(task);
                             }}
-                            className="p-2 text-gray-400 hover:text-white hover:bg-blue-500 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
+                            className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
                             title="Edit task"
                           >
-                            <Edit className="w-4 h-4" />
+                            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <Edit className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-blue-600 transition-colors duration-300" />
+                            </div>
                           </button>
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteTask(task.id);
                             }}
-                            className="p-2 text-gray-400 hover:text-white hover:bg-red-500 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
+                            className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
                             title="Delete task"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-red-600 transition-colors duration-300" />
+                            </div>
                           </button>
                         </div>
                       </div>

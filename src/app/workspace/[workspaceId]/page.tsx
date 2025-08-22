@@ -224,7 +224,7 @@ export default function WorkspacePage() {
       {/* Main Content */}
       <div className="p-6 relative z-[50]">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 md:gap-6 mb-8">
           {(() => {
             const totalTasks = tasks.length;
             const completedTasks = tasks.filter(task => 
@@ -235,11 +235,11 @@ export default function WorkspacePage() {
 
             return (
               <>
-                <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105">
-                  <div className="flex items-center justify-between">
+                <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex-1">
-                      <p className="text-gray-600 font-mono text-sm">Total Boards</p>
-                      <p className="text-3xl font-bold font-mono group-hover:text-gray-700 transition-colors duration-200">{boards.length}</p>
+                      <p className="text-gray-600 font-mono text-xs sm:text-sm">Total Boards</p>
+                      <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono group-hover:text-gray-700 transition-colors duration-200">{boards.length}</p>
                       <div className="mt-2 flex items-center space-x-2">
                         <div className="h-1 bg-gray-200 rounded-full flex-1">
                           <div 
@@ -247,18 +247,18 @@ export default function WorkspacePage() {
                             style={{ width: boards.length > 0 ? '100%' : '0%' }}
                           />
                         </div>
-                        <span className="text-xs font-mono text-gray-500">Active</span>
+                        <span className="text-xs font-mono text-gray-500 hidden sm:inline">Active</span>
                       </div>
                     </div>
-                    <Grid3X3 className="w-8 h-8 text-gray-600 group-hover:scale-110 transition-transform duration-200" />
+                    <Grid3X3 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-gray-600 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
                   </div>
                 </div>
 
-                <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.1s' }}>
-                  <div className="flex items-center justify-between">
+                <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.1s' }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex-1">
-                      <p className="text-gray-600 font-mono text-sm">Total Tasks</p>
-                      <p className="text-3xl font-bold font-mono text-blue-600 group-hover:text-blue-700 transition-colors duration-200">{totalTasks}</p>
+                      <p className="text-gray-600 font-mono text-xs sm:text-sm">Total Tasks</p>
+                      <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono text-blue-600 group-hover:text-blue-700 transition-colors duration-200">{totalTasks}</p>
                       <div className="mt-2 flex items-center space-x-2">
                         <div className="h-1 bg-blue-100 rounded-full flex-1">
                           <div 
@@ -269,15 +269,15 @@ export default function WorkspacePage() {
                         <span className="text-xs font-mono text-blue-600">All</span>
                       </div>
                     </div>
-                    <Target className="w-8 h-8 text-blue-500 group-hover:scale-110 transition-transform duration-200" />
+                    <Target className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-500 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
                   </div>
                 </div>
 
-                <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.2s' }}>
-                  <div className="flex items-center justify-between">
+                <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.2s' }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex-1">
-                      <p className="text-gray-600 font-mono text-sm">Completed</p>
-                      <p className="text-3xl font-bold font-mono text-green-600 group-hover:text-green-700 transition-colors duration-200">{completedTasks}</p>
+                      <p className="text-gray-600 font-mono text-xs sm:text-sm">Completed</p>
+                      <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono text-green-600 group-hover:text-green-700 transition-colors duration-200">{completedTasks}</p>
                       <div className="mt-2 flex items-center space-x-2">
                         <div className="h-1 bg-green-100 rounded-full flex-1">
                           <div 
@@ -290,15 +290,15 @@ export default function WorkspacePage() {
                         </span>
                       </div>
                     </div>
-                    <Calendar className="w-8 h-8 text-green-500 group-hover:scale-110 transition-transform duration-200" />
+                    <Calendar className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-500 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
                   </div>
                 </div>
 
-                <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.3s' }}>
-                  <div className="flex items-center justify-between">
+                <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.3s' }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex-1">
-                      <p className="text-gray-600 font-mono text-sm">Active Tasks</p>
-                      <p className="text-3xl font-bold font-mono text-orange-600 group-hover:text-orange-700 transition-colors duration-200">{activeTasks}</p>
+                      <p className="text-gray-600 font-mono text-xs sm:text-sm">Active Tasks</p>
+                      <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono text-orange-600 group-hover:text-orange-700 transition-colors duration-200">{activeTasks}</p>
                       <div className="mt-2 flex items-center space-x-2">
                         <div className="h-1 bg-orange-100 rounded-full flex-1">
                           <div 
@@ -311,15 +311,15 @@ export default function WorkspacePage() {
                         </span>
                       </div>
                     </div>
-                    <Clock className="w-8 h-8 text-orange-500 group-hover:scale-110 transition-transform duration-200" />
+                    <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-500 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
                   </div>
                 </div>
 
-                <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105" style={{ animationDelay: '0.4s' }}>
-                  <div className="flex items-center justify-between">
+                <div className="bg-white/90 border border-gray-200 rounded-xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadein group hover:scale-105 col-span-2 sm:col-span-1" style={{ animationDelay: '0.4s' }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex-1">
-                      <p className="text-gray-600 font-mono text-sm">Members</p>
-                      <p className="text-3xl font-bold font-mono text-purple-600 group-hover:text-purple-700 transition-colors duration-200">{workspace.members.length}</p>
+                      <p className="text-gray-600 font-mono text-xs sm:text-sm">Members</p>
+                      <p className="text-xl sm:text-2xl md:text-3xl font-bold font-mono text-purple-600 group-hover:text-purple-700 transition-colors duration-200">{workspace.members.length}</p>
                       <div className="mt-2 flex items-center space-x-2">
                         <div className="h-1 bg-purple-100 rounded-full flex-1">
                           <div 
@@ -330,7 +330,7 @@ export default function WorkspacePage() {
                         <span className="text-xs font-mono text-purple-600">Active</span>
                       </div>
                     </div>
-                    <Users className="w-8 h-8 text-purple-500 group-hover:scale-110 transition-transform duration-200" />
+                    <Users className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-500 group-hover:scale-110 transition-transform duration-200 mt-2 sm:mt-0 self-end sm:self-auto" />
                   </div>
                 </div>
               </>
