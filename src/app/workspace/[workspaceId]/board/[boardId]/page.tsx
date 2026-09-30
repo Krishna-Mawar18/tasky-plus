@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { boardService, taskService } from '@/lib/services';
-import { Board, Task } from '@/types';
+import { Board, Task, TaskOrderUpdate } from '@/types';
+import { DEFAULT_COLUMNS, statusForColumn, neighbourColumnId, tasksInColumn } from '@/lib/taskOrder';
+import { KanbanBoard } from '@/components/KanbanBoard';
 import { 
   ArrowLeft,
   Plus,
@@ -12,13 +14,30 @@ import {
   Clock,
   Edit,
   Trash2,
-  CheckCircle,
   Circle,
   AlertCircle,
   X
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import EditBoardModal from '../../../../../components/EditBoardModal';
 import Image from 'next/image';
+
+/** Apply persisted move results to local state. Pure, so it is easy to reason about. */
+function applyOrderUpdates(tasks: Task[], updates: TaskOrderUpdate[]): Task[] {
+  if (updates.length === 0) return tasks;
+
+  const byId = new Map(updates.map((update) => [update.taskId, update]));
+  return tasks.map((task) => {
+    const update = byId.get(task.id);
+    if (!update) return task;
+    return {
+      ...task,
+      columnId: update.columnId,
+      order: update.order,
+      ...(update.status ? { status: update.status } : {}),
+    };
+  });
+}
 
 export default function BoardPage() {
   const params = useParams();
@@ -45,6 +64,26 @@ export default function BoardPage() {
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 
+  /**
+   * Sequence number of the most recent move touching each task. A rollback is
+   * applied per task only while no newer drag has superseded it, so a slow
+   * write can never clobber a newer one.
+   */
+  const taskSequence = useRef(new Map<string, number>());
+  const moveCounter = useRef(0);
+
+  // Mirror of `tasks` so the move handler can snapshot outside of a state
+  // updater, which must stay free of side effects.
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+
+  // Boards created before columns were stored fall back to the defaults, which
+  // is exactly the layout this page has always rendered.
+  const columns = useMemo(
+    () => (board?.columns?.length ? board.columns : DEFAULT_COLUMNS),
+    [board],
+  );
+
   const priorityColors = {
     low: 'bg-green-100 text-green-700 border-green-200',
     medium: 'bg-yellow-100 text-yellow-700 border-yellow-200',
@@ -69,8 +108,14 @@ export default function BoardPage() {
         // Load tasks for this board
         const boardTasks = await taskService.getTasksByBoard(boardId);
         setTasks(boardTasks);
+
+        // Repair documents written before task ordering existed. The board is
+        // already rendered correctly from the in-memory fallback sort, so this
+        // runs quietly in the background.
+        void taskService.migrateMissingTaskOrders(boardTasks);
       } catch (error) {
         console.error('Error loading board data:', error);
+        toast.error('Could not load this board. Please refresh and try again.');
       } finally {
         setLoading(false);
       }
@@ -79,10 +124,16 @@ export default function BoardPage() {
     loadBoardData();
   }, [user, boardId]);
 
-
-
   const handleCreateTask = async (columnId: string) => {
     if (!user || !board || !newTask.title.trim()) return;
+
+    const status = statusForColumn(columnId, columns);
+
+    // The board is already in memory, so the new task's position is known
+    // without another read.
+    const columnTasks = tasksInColumn(tasks, columnId);
+    const lastOrder = columnTasks[columnTasks.length - 1];
+    const order = lastOrder ? lastOrder.order + 1000 : 1000;
 
     const taskData = {
       title: newTask.title.trim(),
@@ -93,17 +144,16 @@ export default function BoardPage() {
       assigneeId: user.uid,
       assigneeName: user.displayName || user.email || 'Unknown',
       priority: newTask.priority,
-      status: columnId === 'todo' ? 'todo' as const : 
-             columnId === 'inprogress' ? 'in-progress' as const : 
-             'completed' as const,
+      status,
       dueDate: newTask.dueDate ? new Date(newTask.dueDate) : null,
       tags: []
     };
 
-    // Create temporary task with optimistic ID for immediate UI update
-    const tempTask = {
+    // Optimistic task, positioned at the end of the column it was created in.
+    const tempTask: Task = {
       ...taskData,
       id: `temp-${Date.now()}`,
+      order,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -118,52 +168,86 @@ export default function BoardPage() {
     try {
       // Create task in database
       const createdTaskId = await taskService.createTask(taskData);
-      
+
       // Replace temp task with real task (using the returned ID)
-      setTasks(prev => prev.map(task => 
-        task.id === tempTask.id ? { ...tempTask, id: createdTaskId } : task
+      setTasks(prev => prev.map(task =>
+        task.id === tempTask.id ? { ...task, id: createdTaskId } : task
       ));
     } catch (error) {
       console.error('Error creating task:', error);
       // Remove temp task on error
       setTasks(prev => prev.filter(task => task.id !== tempTask.id));
-      alert('Failed to create task. Please try again.');
+      toast.error('Failed to create task. Please try again.');
     }
   };
 
-  const handleTaskStatusChange = async (taskId: string, newColumnId: string) => {
-    const newStatus = newColumnId === 'todo' ? 'todo' as const : 
-                     newColumnId === 'inprogress' ? 'in-progress' as const : 
-                     'completed' as const;
-    
-    // Store original task for rollback
-    const originalTask = tasks.find(task => task.id === taskId);
-    if (!originalTask) return;
-    
-    // Optimistic update - update UI immediately
-    setTasks(prev => prev.map(task => 
-      task.id === taskId 
-        ? { ...task, columnId: newColumnId, status: newStatus }
-        : task
-    ));
-    
+  /**
+   * Apply a completed drag: update local state immediately, persist, and put
+   * the board back exactly as it was if the write fails.
+   */
+  const handleTasksMove = useCallback(async (updates: TaskOrderUpdate[]) => {
+    const stamp = ++moveCounter.current;
+    const stamps = new Map(updates.map((update) => [update.taskId, stamp]));
+    updates.forEach((update) => taskSequence.current.set(update.taskId, stamp));
+
+    // Snapshot only the fields the move overwrites, so a rollback cannot
+    // discard an edit made while the write was in flight.
+    const current = tasksRef.current;
+    const snapshot = new Map<string, Pick<Task, 'columnId' | 'order' | 'status'>>();
+    updates.forEach(({ taskId }) => {
+      const task = current.find((candidate) => candidate.id === taskId);
+      if (task) {
+        snapshot.set(taskId, {
+          columnId: task.columnId,
+          order: task.order,
+          status: task.status,
+        });
+      }
+    });
+
+    // Optimistic: the board re-renders in its new position immediately.
+    setTasks((previous) => applyOrderUpdates(previous, updates));
+
     try {
-      // Update database in background
-      await taskService.updateTask(taskId, { 
-        columnId: newColumnId,
-        status: newStatus
-      });
+      await taskService.applyTaskMoves(updates);
     } catch (error) {
-      console.error('Error updating task:', error);
-      // Rollback on error
-      setTasks(prev => prev.map(task => 
-        task.id === taskId 
-          ? originalTask
-          : task
-      ));
-      // Show error feedback
-      alert('Failed to move task. Please try again.');
+      console.error('Error saving task position:', error);
+      setTasks((previous) =>
+        previous.map((task) => {
+          const original = snapshot.get(task.id);
+          // Only revert tasks that have not been moved again since.
+          if (!original || taskSequence.current.get(task.id) !== stamps.get(task.id)) {
+            return task;
+          }
+          return { ...task, ...original };
+        }),
+      );
+      // Single owner of failure reporting: the board must not also toast, or
+      // the user sees the same message twice.
+      toast.error('Failed to save the new task position. The board has been restored.');
     }
+  }, []);
+
+  const handleTaskStep = async (taskId: string, direction: -1 | 1) => {
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    if (!task) return;
+
+    const targetColumnId = neighbourColumnId(task.columnId, columns, direction);
+    if (!targetColumnId) return;
+
+    // Stepping to a neighbouring column always lands at the end of it.
+    const destination = tasksInColumn(tasks, targetColumnId);
+    const last = destination[destination.length - 1];
+    const status = statusForColumn(targetColumnId, columns);
+
+    await handleTasksMove([
+      {
+        taskId,
+        columnId: targetColumnId,
+        order: last ? last.order + 1000 : 1000,
+        ...(status === task.status ? {} : { status })
+      },
+    ]);
   };
 
   const handleEditBoard = async (data: { name: string; description: string }) => {
@@ -225,7 +309,7 @@ export default function BoardPage() {
           ? originalTask
           : task
       ));
-      alert('Failed to update task. Please try again.');
+      toast.error('Failed to update task. Please try again.');
     }
   };
 
@@ -257,27 +341,13 @@ export default function BoardPage() {
       console.error('Error deleting task:', error);
       // Rollback on error - add task back
       setTasks(prev => [...prev, deletedTask]);
-      alert('Failed to delete task. Please try again.');
+      toast.error('Failed to delete task. Please try again.');
     }
   };
 
   const cancelDeleteTask = () => {
     setShowDeleteConfirmModal(false);
     setTaskToDelete(null);
-  };
-
-  const getTasksByList = (columnId: string) => {
-    return tasks.filter(task => task.columnId === columnId);
-  };
-
-  const formatDueDate = (date: Date) => {
-    const now = new Date();
-    const diffInDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffInDays < 0) return 'Overdue';
-    if (diffInDays === 0) return 'Today';
-    if (diffInDays === 1) return 'Tomorrow';
-    return `${diffInDays} days`;
   };
 
   if (loading) {
@@ -326,6 +396,109 @@ export default function BoardPage() {
       />
     );
   };
+
+  const renderCreateForm = (columnId: string) => (
+    <div className="mb-4 p-4 bg-gradient-to-br from-white to-gray-50 rounded-xl border-2 border-gray-200 shadow-sm">
+      {/* Task Title Input */}
+      <div className="mb-3">
+        <div className="relative">
+          <input
+            type="text"
+            value={newTask.title}
+            onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newTask.title.trim()) {
+                e.preventDefault();
+                handleCreateTask(columnId);
+              }
+            }}
+            placeholder="What needs to be done?"
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black-400 focus:border-black-200 transition-all duration-200 bg-white/80 backdrop-blur-sm placeholder:text-gray-400"
+            autoFocus
+          />
+          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Description Input */}
+      <div className="mb-4">
+        <textarea
+          value={newTask.description}
+          onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
+          placeholder="Add more details..."
+          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black-400 focus:border-black-200 transition-all duration-200 bg-white/80 backdrop-blur-sm resize-none placeholder:text-gray-400"
+          rows={2}
+        />
+      </div>
+
+      {/* Priority and Due Date Row */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {/* Priority Selector */}
+        <div>
+          <label className="block text-xs font-bold font-mono text-gray-600 mb-1 uppercase tracking-wide">
+            Priority
+          </label>
+          <div className="relative">
+            <select
+              value={newTask.priority}
+              onChange={(e) => setNewTask(prev => ({ ...prev, priority: e.target.value as 'low' | 'medium' | 'high' }))}
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white appearance-none cursor-pointer"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Due Date Picker */}
+        <div>
+          <label className="block text-xs font-bold font-mono text-gray-600 mb-1 uppercase tracking-wide">
+            Due Date
+          </label>
+          <div className="relative">
+            <input
+              type="date"
+              value={newTask.dueDate || ''}
+              onChange={(e) => setNewTask(prev => ({ ...prev, dueDate: e.target.value }))}
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white cursor-pointer focus:bg-blue-50/30"
+            />
+            <Calendar className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center space-x-1 text-xs text-gray-500 font-mono">
+          
+        </div>
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setShowCreateTask(null)}
+            className="px-4 py-2 text-gray-600 border-2 border-gray-200 hover:text-red-500 hover:border-red-500 hover:bg-red-200 text-sm font-mono font-medium hover:bg-gray-100 rounded-lg transition-all duration-200 flex items-center space-x-1"
+          >
+            <span>Cancel</span>
+          </button>
+          <button
+            onClick={() => handleCreateTask(columnId)}
+            disabled={!newTask.title.trim()}
+            className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-2"
+              >
+            <Plus className="w-4 h-4" />
+            <span>Add Task</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#f8f8f6] text-black relative overflow-x-hidden">
@@ -378,293 +551,20 @@ export default function BoardPage() {
 
       {/* Kanban Board */}
       <div className="p-6 relative z-[50]">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 min-h-[600px]">
-          {[
-            { id: 'todo', name: 'To Do', order: 0 },
-            { id: 'inprogress', name: 'In Progress', order: 1 },
-            { id: 'done', name: 'Done', order: 2 }
-          ].map((column) => {
-            const columnTasks = getTasksByList(column.id);
-            const getColumnColor = (columnId: string) => {
-              switch (columnId) {
-                case 'todo': return 'text-orange-700 font-bold';
-                case 'inprogress': return 'text-blue-700 font-bold';
-                case 'done': return 'text-green-700 font-bold';
-                default: return 'text-gray-700 font-bold';
-              }
-            };
-            
-            return (
-              <div key={column.id} className="flex flex-col h-full">
-                {/* Column Header */}
-                <div className="bg-white/90 backdrop-blur-sm rounded-t-xl border border-gray-200 border-b-0 p-4 shadow-lg">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full shadow-md ${
-                        column.id === 'todo' ? 'bg-orange-500' : 
-                        column.id === 'inprogress' ? 'bg-blue-500' : 
-                        column.id === 'done' ? 'bg-green-500' :
-                        'bg-gray-400'
-                      }`}></div>
-                      <h3 className={`font-mono font-semibold ${getColumnColor(column.id)}`}>{column.name}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs font-mono font-bold ${
-                        column.id === 'todo' ? 'bg-orange-100 text-orange-700' : 
-                        column.id === 'inprogress' ? 'bg-blue-100 text-blue-700' : 
-                        column.id === 'done' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {columnTasks.length}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setShowCreateTask(column.id)}
-                      className={`p-2 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md ${
-                        column.id === 'todo' ? 'bg-orange-100 text-orange-600 hover:bg-orange-200 border-2 border-orange-300 hover:border-orange-400' : 
-                        column.id === 'inprogress' ? 'bg-blue-100 text-blue-600 hover:bg-blue-200 border-2 border-blue-300 hover:border-blue-400' : 
-                        column.id === 'done' ? 'bg-green-100 text-green-600 hover:bg-green-200 border-2 border-green-300 hover:border-green-400' :
-                        'bg-gray-100 text-gray-600 hover:bg-gray-200 border-2 border-gray-300 hover:border-gray-400'
-                      }`}
-                      title={`Add task to ${column.name}`}
-                    >
-                      <Plus className="w-5 h-5 font-bold" />
-                    </button>
-                  </div>
-
-                  {/* Create Task Form */}
-                  {showCreateTask === column.id && (
-                    <div className="mb-4 p-4 bg-gradient-to-br from-white to-gray-50 rounded-xl border-2 border-gray-200 shadow-sm">
-                      {/* Task Title Input */}
-                      <div className="mb-3">
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={newTask.title}
-                            onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && newTask.title.trim()) {
-                                e.preventDefault();
-                                handleCreateTask(column.id);
-                              }
-                            }}
-                            placeholder="What needs to be done?"
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black-400 focus:border-black-200 transition-all duration-200 bg-white/80 backdrop-blur-sm placeholder:text-gray-400"
-                            autoFocus
-                          />
-                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Description Input */}
-                      <div className="mb-4">
-                        <textarea
-                          value={newTask.description}
-                          onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Add more details..."
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black-400 focus:border-black-200 transition-all duration-200 bg-white/80 backdrop-blur-sm resize-none placeholder:text-gray-400"
-                          rows={2}
-                        />
-                      </div>
-
-                      {/* Priority and Due Date Row */}
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        {/* Priority Selector */}
-                        <div>
-                          <label className="block text-xs font-bold font-mono text-gray-600 mb-1 uppercase tracking-wide">
-                            Priority
-                          </label>
-                          <div className="relative">
-                            <select
-                              value={newTask.priority}
-                              onChange={(e) => setNewTask(prev => ({ ...prev, priority: e.target.value as 'low' | 'medium' | 'high' }))}
-                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white appearance-none cursor-pointer"
-                            >
-                              <option value="low">Low</option>
-                              <option value="medium">Medium</option>
-                              <option value="high">High</option>
-                            </select>
-                            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Due Date Picker */}
-                        <div>
-                          <label className="block text-xs font-bold font-mono text-gray-600 mb-1 uppercase tracking-wide">
-                            Due Date
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="date"
-                              value={newTask.dueDate || ''}
-                              onChange={(e) => setNewTask(prev => ({ ...prev, dueDate: e.target.value }))}
-                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white cursor-pointer focus:bg-blue-50/30"
-                            />
-                            <Calendar className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center space-x-1 text-xs text-gray-500 font-mono">
-                          
-                        </div>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => setShowCreateTask(null)}
-                            className="px-4 py-2 text-gray-600 border-2 border-gray-200 hover:text-red-500 hover:border-red-500 hover:bg-red-200 text-sm font-mono font-medium hover:bg-gray-100 rounded-lg transition-all duration-200 flex items-center space-x-1"
-                          >
-                            <span>Cancel</span>
-                          </button>
-                          <button
-                            onClick={() => handleCreateTask(column.id)}
-                            disabled={!newTask.title.trim()}
-                            className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-2"
-              >
-                            <Plus className="w-4 h-4" />
-                            <span>Add Task</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Task List */}
-                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-b-xl border-t-0 flex-1 p-4 space-y-3 shadow-lg">
-                  {columnTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm p-5 rounded-xl border border-gray-200/60 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 cursor-pointer group hover:scale-[1.03] hover:-translate-y-1 relative overflow-hidden"
-                    >
-                      {/* Subtle gradient overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/20 via-transparent to-purple-50/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                      
-                      {/* Task Header */}
-                      <div className="flex items-start justify-between mb-3 relative z-10">
-                        <h4 className="font-mono font-bold text-base text-gray-900 flex-1 pr-2 group-hover:text-blue-700 transition-colors leading-tight">
-                          {task.title}
-                        </h4>
-                        <div className="flex items-center space-x-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditTask(task);
-                            }}
-                            className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
-                            title="Edit task"
-                          >
-                            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <Edit className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-blue-600 transition-colors duration-300" />
-                            </div>
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteTask(task.id);
-                            }}
-                            className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
-                            title="Delete task"
-                          >
-                            <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-red-600 transition-colors duration-300" />
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Task Description */}
-                      {task.description && (
-                        <p className="text-sm text-gray-600 font-mono mb-4 line-clamp-2 leading-relaxed relative z-10">
-                          {task.description}
-                        </p>
-                      )}
-
-                      {/* Task Meta */}
-                      <div className="flex items-center justify-between mb-3 relative z-10">
-                        <div className="flex items-center space-x-2">
-                          <span className={`inline-flex items-center px-3 py-1.5 rounded-full font-mono text-xs font-semibold shadow-sm ${priorityColors[task.priority]} border`}>
-                            {priorityIcons[task.priority]}
-                            <span className="ml-1.5 capitalize">{task.priority}</span>
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center space-x-2">
-                          {task.dueDate && (
-                            <span className={`text-xs font-mono font-semibold px-2 py-1 rounded-md ${
-                              new Date(task.dueDate) < new Date() 
-                                ? 'text-red-700 bg-red-50 border border-red-200' 
-                                : new Date(task.dueDate).toDateString() === new Date().toDateString()
-                                ? 'text-orange-700 bg-orange-50 border border-orange-200'
-                                : 'text-gray-700 bg-gray-50 border border-gray-200'
-                            }`}>
-                              {formatDueDate(new Date(task.dueDate))}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Task Actions */}
-                      <div className="pt-3 border-t border-gray-200/60 flex items-center justify-between relative z-10">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                            <UserAvatar />
-                          </div>
-                          <span className="text-xs text-gray-600 font-mono font-medium">
-                            {task.assigneeName}
-                          </span>
-                        </div>
-                        <div className="flex space-x-1">
-                          {column.id !== 'todo' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const prevColumn = column.id === 'done' ? 'inprogress' : 'todo';
-                                handleTaskStatusChange(task.id, prevColumn);
-                              }}
-                              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm"
-                              title="Move back"
-                            >
-                              <ArrowLeft className="w-4 h-4" />
-                            </button>
-                          )}
-                          {column.id !== 'done' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const nextColumn = column.id === 'todo' ? 'inprogress' : 'done';
-                                handleTaskStatusChange(task.id, nextColumn);
-                              }}
-                              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm"
-                              title="Move forward"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {columnTasks.length === 0 && (
-                    <div className="text-center py-12 text-gray-400">
-                      <p className="text-sm font-mono">No tasks yet</p>
-                    </div>
-                  )}
-
-
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <KanbanBoard
+          columns={columns}
+          tasks={tasks}
+          onTasksMove={handleTasksMove}
+          avatar={<UserAvatar />}
+          createTaskColumnId={showCreateTask}
+          onToggleCreate={(columnId) =>
+            setShowCreateTask((current) => (current === columnId ? null : columnId))
+          }
+          onTaskEdit={handleEditTask}
+          onTaskDelete={handleDeleteTask}
+          onTaskStep={handleTaskStep}
+          renderCreateForm={renderCreateForm}
+        />
       </div>
 
 

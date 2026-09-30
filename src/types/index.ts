@@ -27,24 +27,36 @@ export interface Board {
   name: string;
   description?: string;
   color?: string;
-  columns: Column[];
+  columns: BoardColumn[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface Column {
+/**
+ * Shape of a column as persisted on the board document.
+ * Columns live inside the board doc; tasks live in the top-level `tasks`
+ * collection and reference their column through `Task.columnId`.
+ */
+export interface BoardColumn {
   id: string;
   name: string;
   order: number;
+}
+
+/** A column together with the tasks it contains (UI-facing shape). */
+export interface Column extends BoardColumn {
   tasks: Task[];
 }
+
+export type TaskStatus = 'todo' | 'in-progress' | 'completed';
+export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface Task {
   id: string;
   title: string;
   description?: string;
-  status: 'todo' | 'in-progress' | 'completed';
-  priority: 'low' | 'medium' | 'high';
+  status: TaskStatus;
+  priority: TaskPriority;
   assigneeId?: string;
   assigneeName?: string;
   dueDate?: Date | null;
@@ -54,8 +66,25 @@ export interface Task {
   columnId: string;
   boardId: string;
   workspaceId: string;
+  /**
+   * Persistent position of the task inside its column, ascending.
+   * Uses a sparse numeric scale (1000, 2000, 3000, ...) so a task can be
+   * dropped between two others by writing a single document.
+   */
+  order: number;
   // Optional properties added during data loading for UI purposes
   boardName?: string;
+}
+
+/**
+ * A single task write produced by a drag-and-drop operation.
+ * `status` is only included when the move actually changes it.
+ */
+export interface TaskOrderUpdate {
+  taskId: string;
+  columnId: string;
+  order: number;
+  status?: TaskStatus;
 }
 
 export interface Notification {

@@ -12,10 +12,15 @@ import {
   orderBy,
   serverTimestamp,
   onSnapshot,
-  arrayUnion
+  arrayUnion,
+  writeBatch
 } from 'firebase/firestore';
-import { Workspace, Board, Task, QuickStats } from '@/types';
+import { Workspace, Board, Task, QuickStats, TaskOrderUpdate } from '@/types';
 import { enhancedNotificationService } from './notificationService';
+import { gridOrders, isMissingOrder, sortTasksByOrder, tasksInColumn } from './taskOrder';
+
+/** Firestore caps a single batch at 500 writes. */
+const FIRESTORE_BATCH_LIMIT = 450;
 
 // Workspace Services
 export const workspaceService = {
@@ -270,10 +275,18 @@ export const boardService = {
 
 // Task Services
 export const taskService = {
-  async createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  async createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'order'> & { order?: number }): Promise<string> {
     if (!db) throw new Error('Firebase not configured');
+
+    // Append to the end of the target column. Only touches one document.
+    let order = task.order;
+    if (typeof order !== 'number' || !Number.isFinite(order)) {
+      order = await this.getNextOrderInColumn(task.boardId, task.columnId);
+    }
+    
     const docRef = await addDoc(collection(db, 'tasks'), {
       ...task,
+      order,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -304,23 +317,26 @@ export const taskService = {
       where('boardId', '==', boardId)
     );
     const snapshot = await getDocs(q);
-    const tasks = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate(),
-      dueDate: doc.data().dueDate ? doc.data().dueDate.toDate() : null,
-    })) as Task[];
-    
-    // Sort by createdAt on the client side
-    return tasks.sort((a, b) => {
-      if (!a.createdAt || !b.createdAt) return 0;
-      return a.createdAt.getTime() - b.createdAt.getTime();
-    });
+    const tasks = snapshot.docs.map(toTask);
+    return sortTasksByOrder(tasks);
   },
 
   async getTasks(boardId: string): Promise<Task[]> {
     return this.getTasksByBoard(boardId);
+  },
+
+  /**
+   * Next `order` for a task appended to a column.
+   *
+   * Callers that already hold the board in memory should pass `order`
+   * themselves; this fallback exists for callers that do not. It uses the
+   * single-field `boardId` filter so it never depends on a composite index
+   * being deployed.
+   */
+  async getNextOrderInColumn(boardId: string, columnId: string): Promise<number> {
+    const columnTasks = tasksInColumn(await this.getTasksByBoard(boardId), columnId);
+    const last = columnTasks[columnTasks.length - 1];
+    return last && Number.isFinite(last.order) ? last.order + 1000 : 1000;
   },
 
   async updateTask(id: string, updates: Partial<Task>): Promise<void> {
@@ -385,6 +401,66 @@ export const taskService = {
     });
   },
 
+  /**
+   * Persist the result of a drag in a single write batch.
+   *
+   * A plain reorder sends one document. A rebalance (only triggered once a
+   * column's order values are too dense to split) sends one document per task
+   * in that column, still as a single atomic batch.
+   */
+  async applyTaskMoves(updates: TaskOrderUpdate[]): Promise<void> {
+    if (!db) throw new Error('Firebase not configured');
+    if (updates.length === 0) return;
+
+    const firestore = db;
+    for (let index = 0; index < updates.length; index += FIRESTORE_BATCH_LIMIT) {
+      const chunk = updates.slice(index, index + FIRESTORE_BATCH_LIMIT);
+      const batch = writeBatch(firestore);
+      chunk.forEach(({ taskId, columnId, order, status }) => {
+        batch.update(doc(firestore, 'tasks', taskId), {
+          columnId,
+          order,
+          ...(status ? { status } : {}),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    }
+  },
+
+  /**
+   * Backfill `order` on tasks created before ordering existed.
+   *
+   * Runs once per board load, only touches documents that are actually missing
+   * the field, and leaves the caller's UI untouched — the reader already sorts
+   * legacy tasks by `createdAt`, so this is purely a data repair.
+   */
+  async migrateMissingTaskOrders(tasks: Task[]): Promise<number> {
+    if (!db) return 0;
+
+    const legacy = tasks.filter(isMissingOrder);
+    if (legacy.length === 0) return 0;
+
+    const updates: TaskOrderUpdate[] = [];
+    const columnIds = new Set(legacy.map((task) => task.columnId));
+
+    columnIds.forEach((columnId) => {
+      const columnTasks = sortTasksByOrder(legacy.filter((task) => task.columnId === columnId));
+      gridOrders(columnTasks.length).forEach((order, index) => {
+        updates.push({ taskId: columnTasks[index].id, columnId, order });
+      });
+    });
+
+    try {
+      await this.applyTaskMoves(updates);
+      return updates.length;
+    } catch (error) {
+      // Never block the board on a repair write.
+      console.warn('Failed to migrate missing task orders:', error);
+      return 0;
+    }
+  },
+
   subscribeToTasks(boardId: string, callback: (tasks: Task[]) => void) {
     if (!db) return () => {};
     const q = query(
@@ -392,23 +468,29 @@ export const taskService = {
       where('boardId', '==', boardId)
     );
     return onSnapshot(q, (snapshot) => {
-      const tasks = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate(),
-        dueDate: doc.data().dueDate ? doc.data().dueDate.toDate() : null,
-      })) as Task[];
-      
-      // Sort by createdAt on the client side
-      const sortedTasks = tasks.sort((a, b) => {
-        if (!a.createdAt || !b.createdAt) return 0;
-        return a.createdAt.getTime() - b.createdAt.getTime();
-      });
-      callback(sortedTasks);
+      callback(sortTasksByOrder(snapshot.docs.map(toTask)));
     });
   },
 };
+
+/** Map a Firestore task snapshot into the `Task` shape used by the UI. */
+function toTask(snapshot: { id: string; data: () => Record<string, unknown> }): Task {
+  const data = snapshot.data();
+  return {
+    ...(data as unknown as Task),
+    id: snapshot.id,
+    createdAt: toDate(data.createdAt),
+    updatedAt: toDate(data.updatedAt),
+    dueDate: data.dueDate ? toDate(data.dueDate) : null,
+    tags: Array.isArray(data.tags) ? (data.tags as string[]) : [],
+  };
+}
+
+function toDate(value: unknown): Date {
+  return typeof (value as { toDate?: () => Date })?.toDate === 'function'
+    ? (value as { toDate: () => Date }).toDate()
+    : new Date(0);
+}
 
 // Search Services
 export const searchService = {
