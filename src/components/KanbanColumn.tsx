@@ -68,16 +68,18 @@ export function KanbanColumn({
   avatar,
   isCreateOpen = false,
   onToggleCreate,
+  readOnly = false,
   children,
   ...actions
 }: KanbanColumnProps) {
   const accents = columnAccents[column.id] ?? fallbackAccent;
 
   // The whole task-list area is the drop target, so a column with zero tasks
-  // is still a valid destination.
+  // is still a valid destination. In read-only mode there is no destination.
   const { setNodeRef, isOver } = useDroppable({
     id: columnDroppableId(column.id),
     data: { type: 'column', columnId: column.id },
+    disabled: readOnly,
   });
 
   const isEmpty = tasks.length === 0;

@@ -329,6 +329,11 @@ export default function DashboardPage() {
 
   const handleEditSubmit = useCallback(async (data: { name: string; description: string; color: string }) => {
     if (!user || !selectedWorkspace) return;
+    // Workspace settings are owner-only; this mirrors the security rules.
+    if (selectedWorkspace.ownerId !== user.uid) {
+      setError('Only the workspace owner can edit workspace settings.');
+      return;
+    }
     setError(null);
     try {
       await workspaceService.updateWorkspace(selectedWorkspace.id, data);
@@ -345,6 +350,11 @@ export default function DashboardPage() {
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!user || !selectedWorkspace) return;
+    if (selectedWorkspace.ownerId !== user.uid) {
+      setError('Only the workspace owner can delete this workspace.');
+      setShowDeleteModal(false);
+      return;
+    }
     setError(null);
     setIsDeleting(true);
     try {
@@ -1148,37 +1158,43 @@ export default function DashboardPage() {
                              <div className={`w-4 h-4 rounded-full ${workspace.color} shadow-lg group-hover:scale-125 group-hover:shadow-xl transition-all duration-300`}></div>
                              <h3 className="font-bold text-lg text-gray-800 group-hover:text-gray-900 transition-colors duration-200 line-clamp-1">{workspace.name}</h3>
                            </div>
-                                                     {/* Edit and Delete Action Buttons */}
-                          <div className="flex items-center space-x-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300">
-                             {/* Edit Workspace Button */}
-                             <button
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 handleEditWorkspace(workspace);
-                               }}
-                               className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
-                               title="Edit workspace"
-                             >
-                               <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
-                               <div className="absolute inset-0 flex items-center justify-center">
-                                 <Edit className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-blue-600 transition-colors duration-300" />
-                               </div>
-                             </button>
-                             {/* Delete Workspace Button */}
-                             <button
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 handleDeleteWorkspace(workspace);
-                               }}
-                               className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
-                               title="Delete workspace"
-                             >
-                               <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
-                               <div className="absolute inset-0 flex items-center justify-center">
-                                 <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-red-600 transition-colors duration-300" />
-                               </div>
-                             </button>
-                           </div>
+                            {/* Edit and Delete are owner-only. The check mirrors
+                                the security rules, which key both operations off
+                                `workspaces/{id}.ownerId`. */}
+                           <div className="flex items-center space-x-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300">
+                              {workspace.ownerId === user.uid && (
+                                <>
+                                  {/* Edit Workspace Button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditWorkspace(workspace);
+                                    }}
+                                    className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
+                                    title="Edit workspace"
+                                  >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      <Edit className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-blue-600 transition-colors duration-300" />
+                                    </div>
+                                  </button>
+                                  {/* Delete Workspace Button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteWorkspace(workspace);
+                                    }}
+                                    className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
+                                    title="Delete workspace"
+                                  >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-red-600 transition-colors duration-300" />
+                                    </div>
+                                  </button>
+                                </>
+                              )}
+                            </div>
                          </div>
                          
                          {/* Workspace Description */}

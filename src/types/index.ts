@@ -10,12 +10,55 @@ export interface User {
   };
 }
 
+/**
+ * Role of a user inside a single workspace.
+ *
+ * `owner` is unique per workspace and cannot be transferred or downgraded.
+ */
+export type WorkspaceRole = 'owner' | 'manager' | 'viewer';
+
+/**
+ * A membership document at
+ * `workspaces/{workspaceId}/members/{uid}`.
+ *
+ * This subcollection is the authoritative source of truth for who belongs to a
+ * workspace and what they may do. `Workspace.members` is a derived UID list kept
+ * only so workspace discovery can still use an `array-contains` query.
+ */
+export interface WorkspaceMember {
+  uid: string;
+  role: WorkspaceRole;
+  /** Denormalised at add time so the members list needs no cross-user read. */
+  email?: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+  /** Email that was used to add this member, normalised. */
+  addedBy?: string;
+  addedByEmail?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Minimal profile stored in `userEmailIndex` so an email can be resolved. */
+export interface UserEmailIndexEntry {
+  uid: string;
+  email: string;
+  displayName?: string | null;
+  photoURL?: string | null;
+  updatedAt?: Date;
+}
+
 export interface Workspace {
   id: string;
   name: string;
   description?: string;
   color: string;
   ownerId: string;
+  /**
+   * Derived UID index, maintained alongside the `members` subcollection. Kept
+   * because `workspaceService.getWorkspaces` and `subscribeToWorkspaces` query
+   * `where('members', 'array-contains', userId)`.
+   */
   members: string[];
   createdAt: Date;
   updatedAt: Date;

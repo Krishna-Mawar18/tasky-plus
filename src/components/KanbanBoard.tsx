@@ -34,6 +34,11 @@ export interface KanbanBoardProps {
   onTaskDelete: (taskId: string) => void;
   onTaskStep: (taskId: string, direction: -1 | 1) => void;
   renderCreateForm: (columnId: string) => React.ReactNode;
+  /**
+   * Viewer mode. Disables every sensor and the drop targets, and hides the
+   * create, edit, delete and step controls, so the board cannot be mutated.
+   */
+  readOnly?: boolean;
 }
 
 export function KanbanBoard({
@@ -47,6 +52,7 @@ export function KanbanBoard({
   onTaskDelete,
   onTaskStep,
   renderCreateForm,
+  readOnly = false,
 }: KanbanBoardProps) {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
@@ -67,16 +73,21 @@ export function KanbanBoard({
     return grouped;
   }, [tasks, orderedColumns]);
 
+  // `useSensors` is a hook, so the same call shape is kept and only the sensor
+  // list is emptied. With no sensors, dnd-kit never starts a drag.
+  // A few pixels of travel separate a click from a drag, so the existing
+  // edit/delete/step buttons keep working on a plain click. Touch activation is
+  // delayed so a touch still scrolls the board and only becomes a drag once the
+  // user holds still.
+  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: { delay: 200, tolerance: 8 },
+  });
+  const keyboardSensor = useSensor(KeyboardSensor, {
+    coordinateGetter: sortableKeyboardCoordinates,
+  });
   const sensors = useSensors(
-    // A few pixels of travel separate a click from a drag, so the existing
-    // edit/delete/step buttons keep working on a plain click.
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    // Delayed activation lets a touch still scroll the board, and only turns
-    // into a drag once the user holds still.
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 8 },
-    }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    ...(readOnly ? [] : [pointerSensor, touchSensor, keyboardSensor]),
   );
 
   const activeTask = useMemo(
@@ -85,12 +96,13 @@ export function KanbanBoard({
   );
 
   const handleDragStart = ({ active }: DragStartEvent) => {
+    if (readOnly) return;
     setActiveTaskId(String(active.id));
   };
 
   const handleDragEnd = async ({ active, over }: DragEndEvent) => {
     setActiveTaskId(null);
-    if (!over) return;
+    if (readOnly || !over) return;
 
     const activeId = String(active.id);
     const overId = String(over.id);
@@ -150,31 +162,36 @@ export function KanbanBoard({
             column={column}
             tasks={tasksByColumn.get(column.id) ?? []}
             avatar={avatar}
-            isCreateOpen={createTaskColumnId === column.id}
-            onToggleCreate={onToggleCreate}
-            onEdit={onTaskEdit}
-            onDelete={onTaskDelete}
-            onStep={onTaskStep}
+            readOnly={readOnly}
+            isCreateOpen={!readOnly && createTaskColumnId === column.id}
+            onToggleCreate={readOnly ? undefined : onToggleCreate}
+            onEdit={readOnly ? undefined : onTaskEdit}
+            onDelete={readOnly ? undefined : onTaskDelete}
+            onStep={readOnly ? undefined : onTaskStep}
             canStepBack={
+              !readOnly &&
               orderedColumns.findIndex((candidate) => candidate.id === column.id) > 0
             }
             canStepForward={
+              !readOnly &&
               orderedColumns.findIndex((candidate) => candidate.id === column.id) <
               orderedColumns.length - 1
             }
           >
-            {createTaskColumnId === column.id ? renderCreateForm(column.id) : null}
+            {createTaskColumnId === column.id && !readOnly ? renderCreateForm(column.id) : null}
           </KanbanColumn>
         ))}
       </div>
 
-      <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
-        {activeTask ? (
-          <div className="pointer-events-none cursor-grabbing rotate-2 scale-[1.02] shadow-2xl rounded-xl">
-            <TaskCardBody task={activeTask} avatar={avatar} />
-          </div>
-        ) : null}
-      </DragOverlay>
+      {readOnly ? null : (
+        <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+          {activeTask ? (
+            <div className="pointer-events-none cursor-grabbing rotate-2 scale-[1.02] shadow-2xl rounded-xl">
+              <TaskCardBody task={activeTask} avatar={avatar} />
+            </div>
+          ) : null}
+        </DragOverlay>
+      )}
     </DndContext>
   );
 }

@@ -20,6 +20,8 @@ export interface TaskCardActions {
   onStep?: (taskId: string, direction: -1 | 1) => void;
   canStepBack?: boolean;
   canStepForward?: boolean;
+  /** Viewer mode: the card can be read but not dragged or edited. */
+  readOnly?: boolean;
 }
 
 interface TaskCardProps extends TaskCardActions {
@@ -54,8 +56,12 @@ export function formatDueDate(date: Date): string {
  *
  * The dnd-kit transform is applied to this outer wrapper while the existing
  * hover lift lives on the inner card, so the two never fight over `transform`.
+ *
+ * With `readOnly` the sortable is disabled and the drag listeners are never
+ * attached, so a viewer's pointer falls through to text selection and the
+ * browser handles scrolling normally.
  */
-export function TaskCard({ task, avatar, ...actions }: TaskCardProps) {
+export function TaskCard({ task, avatar, readOnly = false, ...actions }: TaskCardProps) {
   const {
     attributes,
     listeners,
@@ -63,7 +69,7 @@ export function TaskCard({ task, avatar, ...actions }: TaskCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id, data: { type: 'task', task } });
+  } = useSortable({ id: task.id, data: { type: 'task', task }, disabled: readOnly });
 
   return (
     <div
@@ -72,8 +78,8 @@ export function TaskCard({ task, avatar, ...actions }: TaskCardProps) {
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      {...attributes}
-      {...listeners}
+      {...(readOnly ? {} : attributes)}
+      {...(readOnly ? {} : listeners)}
       // `touch-manipulation` (not `touch-none`) keeps touch scrolling and pinch
       // zoom working on the board; TouchSensor's delay is what separates a drag
       // from a scroll or a tap.

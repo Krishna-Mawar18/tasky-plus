@@ -3,9 +3,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { WorkspaceRoleProvider, useWorkspaceRole } from '@/contexts/WorkspaceRoleContext';
 import { boardService, taskService } from '@/lib/services';
 import { Board, Task, TaskOrderUpdate } from '@/types';
 import { DEFAULT_COLUMNS, statusForColumn, neighbourColumnId, tasksInColumn } from '@/lib/taskOrder';
+import { isWorkspaceReadOnly } from '@/lib/permissions';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { 
   ArrowLeft,
@@ -16,6 +18,7 @@ import {
   Trash2,
   Circle,
   AlertCircle,
+  Eye,
   X
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -41,10 +44,27 @@ function applyOrderUpdates(tasks: Task[], updates: TaskOrderUpdate[]): Task[] {
 
 export default function BoardPage() {
   const params = useParams();
+  const workspaceId = params.workspaceId as string;
+
+  return (
+    <WorkspaceRoleProvider workspaceId={workspaceId}>
+      <BoardContent />
+    </WorkspaceRoleProvider>
+  );
+}
+
+function BoardContent() {
+  const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
   const workspaceId = params.workspaceId as string;
   const boardId = params.boardId as string;
+  const { loading: roleLoading, can, role } = useWorkspaceRole();
+  // One gate for every board and task write, so the same rule that hides a
+  // control also blocks the write behind it. True while the role is unresolved,
+  // which is what stops a viewer's page from flashing owner controls.
+  const canEditBoard = can('board.edit');
+  const readOnly = isWorkspaceReadOnly(role);
 
   const [board, setBoard] = useState<Board | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -125,7 +145,7 @@ export default function BoardPage() {
   }, [user, boardId]);
 
   const handleCreateTask = async (columnId: string) => {
-    if (!user || !board || !newTask.title.trim()) return;
+    if (readOnly || !user || !board || !newTask.title.trim()) return;
 
     const status = statusForColumn(columnId, columns);
 
@@ -186,6 +206,10 @@ export default function BoardPage() {
    * the board back exactly as it was if the write fails.
    */
   const handleTasksMove = useCallback(async (updates: TaskOrderUpdate[]) => {
+    // Belt-and-braces: the board is rendered without sensors when read-only, so
+    // this only guards against a move arriving from anywhere else.
+    if (readOnly) return;
+
     const stamp = ++moveCounter.current;
     const stamps = new Map(updates.map((update) => [update.taskId, stamp]));
     updates.forEach((update) => taskSequence.current.set(update.taskId, stamp));
@@ -226,9 +250,10 @@ export default function BoardPage() {
       // the user sees the same message twice.
       toast.error('Failed to save the new task position. The board has been restored.');
     }
-  }, []);
+  }, [readOnly]);
 
   const handleTaskStep = async (taskId: string, direction: -1 | 1) => {
+    if (readOnly) return;
     const task = tasks.find((candidate) => candidate.id === taskId);
     if (!task) return;
 
@@ -251,7 +276,7 @@ export default function BoardPage() {
   };
 
   const handleEditBoard = async (data: { name: string; description: string }) => {
-    if (!board) return;
+    if (readOnly || !board) return;
     
     try {
       await boardService.updateBoard(board.id, data);
@@ -274,7 +299,7 @@ export default function BoardPage() {
   };
 
   const handleUpdateTask = async () => {
-    if (!editingTask || !newTask.title.trim()) return;
+    if (readOnly || !editingTask || !newTask.title.trim()) return;
 
     const taskData = {
       title: newTask.title.trim(),
@@ -314,6 +339,7 @@ export default function BoardPage() {
   };
 
   const handleDeleteTask = (taskId: string) => {
+    if (readOnly) return;
     const task = tasks.find(t => t.id === taskId);
     if (task) {
       setTaskToDelete(task);
@@ -322,7 +348,7 @@ export default function BoardPage() {
   };
 
   const confirmDeleteTask = async () => {
-    if (!taskToDelete) return;
+    if (readOnly || !taskToDelete) return;
 
     // Store task for potential rollback
     const deletedTask = { ...taskToDelete };
@@ -350,7 +376,7 @@ export default function BoardPage() {
     setTaskToDelete(null);
   };
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="min-h-screen bg-[#f8f8f6] flex items-center justify-center">
         <div className="text-black text-xl font-mono">Loading board...</div>
@@ -535,19 +561,34 @@ export default function BoardPage() {
             </div>
             
             <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
-              <button
-                onClick={() => setShowEditModal(true)}
-                className="bg-black text-white px-2 py-2 sm:px-4 sm:py-2 rounded-lg font-mono font-bold text-xs sm:text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-1 sm:space-x-2"
-                title="Edit board"
-              >
-                <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Edit Board</span>
-                <span className="sm:hidden">Edit</span>
-              </button>
+              {canEditBoard && (
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="bg-black text-white px-2 py-2 sm:px-4 sm:py-2 rounded-lg font-mono font-bold text-xs sm:text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-1 sm:space-x-2"
+                  title="Edit board"
+                >
+                  <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Edit Board</span>
+                  <span className="sm:hidden">Edit</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
       </nav>
+
+      {readOnly && (
+        <div className="px-6 pt-4 relative z-[50]">
+          <div className="max-w-3xl mx-auto flex items-center gap-3 px-4 py-3 rounded-xl bg-white/90 border-2 border-gray-200 shadow-lg">
+            <Eye className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            <p className="text-sm font-mono text-gray-600">
+              {role === 'viewer'
+                ? 'Viewer access: you can read this board but cannot create, edit or move tasks.'
+                : 'Read-only access for your role.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Kanban Board */}
       <div className="p-6 relative z-[50]">
@@ -556,6 +597,7 @@ export default function BoardPage() {
           tasks={tasks}
           onTasksMove={handleTasksMove}
           avatar={<UserAvatar />}
+          readOnly={readOnly}
           createTaskColumnId={showCreateTask}
           onToggleCreate={(columnId) =>
             setShowCreateTask((current) => (current === columnId ? null : columnId))

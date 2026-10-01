@@ -13,50 +13,75 @@ import {
   serverTimestamp,
   onSnapshot,
   arrayUnion,
+  arrayRemove,
+  setDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Workspace, Board, Task, QuickStats, TaskOrderUpdate } from '@/types';
+import { Workspace, WorkspaceMember, WorkspaceRole, Board, Task, QuickStats, TaskOrderUpdate } from '@/types';
 import { enhancedNotificationService } from './notificationService';
 import { gridOrders, isMissingOrder, sortTasksByOrder, tasksInColumn } from './taskOrder';
+import { isWorkspaceRole } from './permissions';
+import { MemberOperationError } from './memberErrors';
+import { lookupUserByEmail, normalizeEmail } from './userEmailIndex';
 
 /** Firestore caps a single batch at 500 writes. */
 const FIRESTORE_BATCH_LIMIT = 450;
 
 // Workspace Services
 export const workspaceService = {
+  /**
+   * Create a workspace, then its owner's membership document, then record the
+   * workspace on the owner's user document.
+   *
+   * Deliberately sequential rather than one batch: a rule cannot see a sibling
+   * write in the same batch, so the membership document would be evaluated
+   * before the workspace it belongs to exists. If the second step ever fails,
+   * `ensureOwnerMembership` repairs it the next time the owner opens it.
+   */
   async createWorkspace(workspace: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
     if (!db) {
       console.error('Firestore database is not initialized');
       throw new Error('Firebase not configured');
     }
-    
+
     try {
-      // Create the workspace
-      const docRef = await addDoc(collection(db, 'workspaces'), {
+      const workspaceRef = await addDoc(collection(db, 'workspaces'), {
         ...workspace,
+        // The UID list is derived from the members subcollection, never the
+        // other way round.
+        members: [workspace.ownerId],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      
-      // Update user's workspaces array
-      const userRef = doc(db, 'users', workspace.ownerId);
-      await updateDoc(userRef, {
-        workspaces: arrayUnion(docRef.id),
+
+      await setDoc(memberDocRef(workspaceRef.id, workspace.ownerId), {
+        uid: workspace.ownerId,
+        role: 'owner',
+        email: null,
+        displayName: null,
+        photoURL: null,
+        addedBy: workspace.ownerId,
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      
+
+      await updateDoc(doc(db, 'users', workspace.ownerId), {
+        workspaces: arrayUnion(workspaceRef.id),
+        updatedAt: serverTimestamp(),
+      });
+
       // Send notification for workspace creation
       try {
         await enhancedNotificationService.notifyWorkspaceCreated(
           workspace.ownerId,
           workspace.name,
-          docRef.id
+          workspaceRef.id
         );
       } catch (notificationError) {
         console.warn('Failed to send workspace creation notification:', notificationError);
       }
-      
-      return docRef.id;
+
+      return workspaceRef.id;
     } catch (error) {
       console.error('Error creating workspace:', error);
       throw error;
@@ -152,9 +177,20 @@ export const workspaceService = {
     });
   },
 
+  /**
+   * Delete a workspace together with its membership documents.
+   *
+   * Firestore rules cannot cascade, so the `members` subcollection is cleaned up
+   * in the same batch rather than being left behind as orphans.
+   */
   async deleteWorkspace(id: string): Promise<void> {
     if (!db) throw new Error('Firebase not configured');
-    await deleteDoc(doc(db, 'workspaces', id));
+
+    const membersSnapshot = await getDocs(collection(db, 'workspaces', id, 'members'));
+    const batch = writeBatch(db);
+    membersSnapshot.docs.forEach((member) => batch.delete(member.ref));
+    batch.delete(doc(db, 'workspaces', id));
+    await batch.commit();
   },
 
   subscribeToWorkspaces(userId: string, callback: (workspaces: Workspace[]) => void) {
@@ -178,6 +214,320 @@ export const workspaceService = {
       });
       callback(sortedWorkspaces);
     });
+  },
+};
+
+// Member Services
+
+/** `workspaces/{workspaceId}/members/{uid}` — the authoritative membership record. */
+function memberDocRef(workspaceId: string, uid: string) {
+  return doc(db!, 'workspaces', workspaceId, 'members', uid);
+}
+
+/**
+ * Map a membership snapshot into the `WorkspaceMember` shape.
+ *
+ * An unrecognised or missing role becomes `null` so callers cannot mistake a
+ * corrupt document for elevated access.
+ */
+function toWorkspaceMember(snapshot: {
+  id: string;
+  data: () => Record<string, unknown>;
+}): WorkspaceMember | null {
+  const data = snapshot.data();
+  const role = data.role;
+  if (!isWorkspaceRole(role)) return null;
+
+  return {
+    uid: String(data.uid ?? snapshot.id),
+    role,
+    email: (data.email as string | null) ?? null,
+    displayName: (data.displayName as string | null) ?? null,
+    photoURL: (data.photoURL as string | null) ?? null,
+    addedBy: data.addedBy as string | undefined,
+    addedByEmail: (data.addedByEmail as string | null) ?? null,
+    createdAt: toDate(data.createdAt),
+    updatedAt: toDate(data.updatedAt),
+  };
+}
+
+/** Owner first, then managers, then viewers; alphabetical by display name. */
+function sortMembers(a: WorkspaceMember, b: WorkspaceMember): number {
+  const weight = { owner: 0, manager: 1, viewer: 2 } as const;
+  if (weight[a.role] !== weight[b.role]) return weight[a.role] - weight[b.role];
+  return (a.displayName || a.email || '').localeCompare(b.displayName || b.email || '');
+}
+
+export const memberService = {
+  /**
+   * Role of a single user in a workspace, or `null` when they are not a member.
+   *
+   * This is the read the UI uses to decide which controls to render. A
+   * `permission-denied` result is treated as "not a member" rather than an
+   * error, since it simply means the caller cannot see that membership.
+   */
+  async getRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null> {
+    if (!db) return null;
+    try {
+      const snapshot = await getDoc(memberDocRef(workspaceId, userId));
+      if (!snapshot.exists()) return null;
+      const role = snapshot.data().role;
+      return isWorkspaceRole(role) ? role : null;
+    } catch (error) {
+      console.error('Error reading workspace role:', error);
+      return null;
+    }
+  },
+
+  /** Every membership in a workspace, ordered owner first then by name. */
+  async getMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+    if (!db) return [];
+    const snapshot = await getDocs(collection(db, 'workspaces', workspaceId, 'members'));
+    return snapshot.docs
+      .map(toWorkspaceMember)
+      .filter((member): member is WorkspaceMember => member !== null)
+      .sort(sortMembers);
+  },
+
+  /**
+   * Live member list.
+   *
+   * `onError` matters as much as the callback: for a non-member the rules reject
+   * the read, and without it the caller is left waiting on a snapshot that will
+   * never arrive.
+   */
+  subscribeToMembers(
+    workspaceId: string,
+    callback: (members: WorkspaceMember[]) => void,
+    onError?: (error: unknown) => void,
+  ) {
+    if (!db) {
+      onError?.(new MemberOperationError('firebase-not-configured'));
+      return () => {};
+    }
+    return onSnapshot(
+      collection(db, 'workspaces', workspaceId, 'members'),
+      (snapshot) => {
+        callback(
+          snapshot.docs
+            .map(toWorkspaceMember)
+            .filter((member): member is WorkspaceMember => member !== null)
+            .sort(sortMembers),
+        );
+      },
+      (error) => {
+        console.error('Error subscribing to workspace members:', error);
+        onError?.(error);
+      },
+    );
+  },
+
+  /**
+   * Add a member by email address.
+   *
+   * The email is resolved through `userEmailIndex`, then the membership
+   * document, the workspace's derived UID list and the new member's own
+   * `workspaces` array are written in a single batch, so a member can never end
+   * up half-added.
+   *
+   * Every condition the rules will enforce is checked here first, because a
+   * refused batch comes back as an undifferentiated `permission-denied`. Without
+   * these checks a manager adding themselves, or a caller whose membership record
+   * the rules no longer accept, is both told their role is wrong and left with no
+   * way to tell what to fix.
+   */
+  async addMember(input: {
+    workspaceId: string;
+    email: string;
+    role: WorkspaceRole;
+    addedBy: string;
+    addedByEmail?: string | null;
+  }): Promise<void> {
+    if (!db) throw new MemberOperationError('firebase-not-configured');
+    if (input.role === 'owner') throw new MemberOperationError('invalid-role');
+
+    const email = normalizeEmail(input.email);
+    if (!email || !email.includes('@')) throw new MemberOperationError('invalid-email');
+
+    const profile = await lookupUserByEmail(email);
+    if (!profile) throw new MemberOperationError('user-not-found');
+
+    // The rules refuse this write, so catching it here turns an opaque
+    // permission error into something the person can act on.
+    if (profile.uid === input.addedBy) throw new MemberOperationError('cannot-add-self');
+
+    const existing = await getDoc(memberDocRef(input.workspaceId, profile.uid));
+    if (existing.exists()) throw new MemberOperationError('already-member');
+
+    // Confirm the caller is who the UI believes they are before the batch, so a
+    // stale role in the client cannot be reported as a server-side problem.
+    // Adding a member is owner-only: a manager has no membership write path.
+    const workspace = await getDoc(doc(db, 'workspaces', input.workspaceId));
+    const callerIsOwner = workspace.exists() && workspace.data()?.ownerId === input.addedBy;
+    if (!callerIsOwner) {
+      const callerRole = await this.getRole(input.workspaceId, input.addedBy);
+      throw new MemberOperationError(
+        callerRole === null ? 'membership-record-missing' : 'insufficient-permission',
+      );
+    }
+
+    const batch = writeBatch(db);
+    batch.set(memberDocRef(input.workspaceId, profile.uid), {
+      uid: profile.uid,
+      role: input.role,
+      email,
+      displayName: profile.displayName ?? null,
+      photoURL: profile.photoURL ?? null,
+      addedBy: input.addedBy,
+      addedByEmail: input.addedByEmail ?? null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'workspaces', input.workspaceId), {
+      members: arrayUnion(profile.uid),
+      updatedAt: serverTimestamp(),
+    });
+    // Only the workspace list is touched on the target's user document: their
+    // profile is owned by their own sign-in, and rewriting it here would let the
+    // owner overwrite someone else's display name. The profile is denormalised
+    // onto the membership document instead.
+    batch.set(
+      doc(db, 'users', profile.uid),
+      {
+        uid: profile.uid,
+        workspaces: arrayUnion(input.workspaceId),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    await batch.commit();
+  },
+
+  /**
+   * Fill in the caller's own display fields on their membership document.
+   *
+   * Membership documents created before the profile was denormalised onto them
+   * render as "Unknown user" with a raw UID, and nothing else can repair them:
+   * the rules deliberately refuse cross-user profile reads, because that would
+   * expose every co-member's address to the whole workspace. Each person can
+   * therefore only fix their own row, which is exactly what this does.
+   *
+   * Best effort by design — a failure here must never cost somebody their
+   * access, so it is logged and swallowed rather than thrown.
+   */
+  async syncOwnMemberProfile(
+    workspaceId: string,
+    userId: string,
+    profile: { email: string | null; displayName?: string | null; photoURL?: string | null },
+  ): Promise<void> {
+    if (!db) return;
+
+    try {
+      const ref = memberDocRef(workspaceId, userId);
+      const snapshot = await getDoc(ref);
+      if (!snapshot.exists()) return;
+
+      const current = snapshot.data();
+      const patch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+      let dirty = false;
+
+      const wanted = {
+        email: profile.email,
+        displayName: profile.displayName ?? null,
+        photoURL: profile.photoURL ?? null,
+      };
+
+      for (const [field, value] of Object.entries(wanted)) {
+        // Only ever fills a gap, or corrects a stale value the owner of the
+        // document can prove from their own auth token.
+        if (value == null || value === '') continue;
+        if (current[field] !== value) {
+          patch[field] = value;
+          dirty = true;
+        }
+      }
+
+      if (!dirty) return;
+      await updateDoc(ref, patch);
+    } catch (error) {
+      console.error('Could not refresh own member profile:', error);
+    }
+  },
+
+  /**
+   * Remove a member and their derived entries.
+   *
+   * Owner-only, and the rules reject any attempt to remove the workspace owner,
+   * so this cannot leave a workspace without an owner.
+   */
+  async removeMember(workspaceId: string, userId: string): Promise<void> {
+    if (!db) throw new MemberOperationError('firebase-not-configured');
+
+    const batch = writeBatch(db);
+    batch.delete(memberDocRef(workspaceId, userId));
+    batch.update(doc(db, 'workspaces', workspaceId), {
+      members: arrayRemove(userId),
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+  },
+
+  /** Change a member's role. Owner-only; `owner` is not a valid target. */
+  async changeRole(workspaceId: string, userId: string, role: WorkspaceRole): Promise<void> {
+    if (!db) throw new MemberOperationError('firebase-not-configured');
+    if (role === 'owner') throw new MemberOperationError('invalid-role');
+
+    await updateDoc(memberDocRef(workspaceId, userId), {
+      role,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  /**
+   * Create the caller's own owner membership if it is missing.
+   *
+   * Workspaces created before memberships existed have no `members/{uid}`
+   * document. This may only ever create a document for the workspace owner, and
+   * only ever with the `owner` role, so calling it is a data repair rather than
+   * a way to grant access. Safe to call on every workspace load.
+   *
+   * Three outcomes, deliberately distinguished:
+   * - a readable membership with a valid role -> that role
+   * - no document at all -> create one (rules allow exactly this repair)
+   * - a document that exists but is unreadable or has an unrecognised role ->
+   *   the rules refuse the write, because repairing a corrupt role in place
+   *   would be indistinguishable from tampering. That needs an operator.
+   */
+  async ensureOwnerMembership(
+    workspaceId: string,
+    ownerId: string,
+    profile?: { email: string | null; displayName?: string | null; photoURL?: string | null },
+  ): Promise<WorkspaceRole | null> {
+    if (!db) return null;
+
+    const existing = await memberService.getRole(workspaceId, ownerId);
+    if (existing) return existing;
+
+    const ref = memberDocRef(workspaceId, ownerId);
+    const snapshot = await getDoc(ref);
+    if (snapshot.exists()) {
+      throw new MemberOperationError('insufficient-permission');
+    }
+
+    await setDoc(ref, {
+      uid: ownerId,
+      role: 'owner',
+      email: profile?.email ?? null,
+      displayName: profile?.displayName ?? null,
+      photoURL: profile?.photoURL ?? null,
+      addedBy: ownerId,
+      addedByEmail: profile?.email ?? null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    return 'owner';
   },
 };
 

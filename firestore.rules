@@ -1,39 +1,336 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read and write their own user document
+
+    // ---------------------------------------------------------------------
+    // Helpers
+    //
+    // `workspaces/{workspaceId}/members/{uid}` is the authoritative record of
+    // who belongs to a workspace and what they may do. `workspaces.members` is a
+    // derived UID list kept in step with it, because workspace discovery still
+    // uses `where('members', 'array-contains', uid)`.
+    //
+    // `workspaces/{workspaceId}.ownerId` is treated as an independent authority
+    // so an owner can never lock themselves out of their own workspace, even if
+    // a membership document is missing or corrupt.
+    //
+    // A note on list queries: because access to a board or task comes from the
+    // document, Firestore has to evaluate the rule for every candidate document.
+    // Queries stay cheap and predictable as long as they filter on the field the
+    // rule reads — which is what the app does everywhere:
+    //
+    //   workspaces   where('members', 'array-contains', uid)
+    //   boards       where('workspaceId', '==', workspaceId)
+    //   tasks        where('boardId', '==', boardId)   or where('assigneeId', ...)
+    //
+    // A new query that filters on neither should be added to that list rather
+    // than assumed to work.
+    // ---------------------------------------------------------------------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function workspacePath(workspaceId) {
+      return /databases/$(database)/documents/workspaces/$(workspaceId);
+    }
+
+    function memberPath(workspaceId, uid) {
+      return /databases/$(database)/documents/workspaces/$(workspaceId)/members/$(uid);
+    }
+
+    function boardPath(boardId) {
+      return /databases/$(database)/documents/boards/$(boardId);
+    }
+
+    function isMemberOf(workspaceId, uid) {
+      return signedIn() && uid != null && exists(memberPath(workspaceId, uid));
+    }
+
+    function roleOf(workspaceId, uid) {
+      return get(memberPath(workspaceId, uid)).data.role;
+    }
+
+    function ownerIdOf(workspaceId) {
+      return get(workspacePath(workspaceId)).data.ownerId;
+    }
+
+    /** The workspace's own `ownerId` field — the root of trust. */
+    function isWorkspaceOwner(workspaceId) {
+      return signedIn() && exists(workspacePath(workspaceId))
+        && ownerIdOf(workspaceId) == request.auth.uid;
+    }
+
+    function hasRole(workspaceId, role) {
+      return isMemberOf(workspaceId, request.auth.uid)
+        && roleOf(workspaceId, request.auth.uid) == role;
+    }
+
+    function isOwnerRole(workspaceId) {
+      return isWorkspaceOwner(workspaceId) || hasRole(workspaceId, 'owner');
+    }
+
+    function isManagerOrAbove(workspaceId) {
+      return isOwnerRole(workspaceId) || hasRole(workspaceId, 'manager');
+    }
+
+    /** Any role at all, including viewer. */
+    function canViewWorkspace(workspaceId) {
+      return isWorkspaceOwner(workspaceId) || isMemberOf(workspaceId, request.auth.uid);
+    }
+
+    /**
+     * A user's own workspace list, tolerating a document that predates the
+     * field. Treated as empty rather than as a hard failure, so somebody whose
+     * profile was written before the list existed is not permanently impossible
+     * to add to a workspace.
+     */
+    function existingWorkspaces(data) {
+      return ('workspaces' in data && data.workspaces is list) ? data.workspaces : [];
+    }
+
+    /**
+     * Board `workspaceId` decides access, never the board's own fields.
+     */
+    function boardWorkspaceId(data) {
+      return data.workspaceId;
+    }
+
+    /**
+     * The workspace a task document belongs to, whether or not it carries the
+     * field.
+     *
+     * A task written before `workspaceId` was stamped on it resolves through its
+     * board, so a legacy task cannot slip past the check and cannot be used to
+     * reach a workspace the caller does not belong to.
+     */
+    function taskWorkspaceId(data) {
+      return ('workspaceId' in data) ? data.workspaceId : get(boardPath(data.boardId)).data.workspaceId;
+    }
+
+    // ---------------------------------------------------------------------
+    // Users — self service only. Members are listed from the denormalised
+    // profile on the membership document, so no cross-user read is needed.
+    //
+    // The one third-party write is a single append to a user's own `workspaces`
+    // array, done by someone who already manages that workspace.
+    // ---------------------------------------------------------------------
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow get: if signedIn() && request.auth.uid == userId;
+      allow list: if false;
+
+      // AuthContext creates or refreshes the signed-in user's own document.
+      allow create: if signedIn() && request.auth.uid == userId;
+
+      // Adding a member writes `workspaces` onto the new member's document.
+      // Owner-only, matching the membership rule above.
+      allow create: if signedIn()
+        && request.resource.data.uid == userId
+        && request.resource.data.workspaces is list
+        && request.resource.data.workspaces.size() == 1
+        && isWorkspaceOwner(request.resource.data.workspaces[0]);
+
+      // Own document: anything. Otherwise exactly one append, nothing removed,
+      // and only for a workspace the caller owns.
+      allow update: if (signedIn() && request.auth.uid == userId)
+        || (signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['workspaces', 'updatedAt'])
+          && request.resource.data.workspaces is list
+          && request.resource.data.workspaces.hasAll(existingWorkspaces(resource.data))
+          && request.resource.data.workspaces.size()
+            == existingWorkspaces(resource.data).size() + 1
+          && isWorkspaceOwner(request.resource.data.workspaces[request.resource.data.workspaces.size() - 1]));
+
+      allow delete: if false;
     }
-    
-    // Workspaces - users can access workspaces they own or are members of
+
+    // ---------------------------------------------------------------------
+    // Email lookup index — how "add a member by email" works without listing
+    // Firebase Auth users. Document ids are SHA-256 digests of the normalised
+    // address, and the stored `email` is re-verified on read by the client.
+    //
+    //   get: any signed-in user   list: nobody   write: only your own entry
+    // ---------------------------------------------------------------------
+    match /userEmailIndex/{emailHash} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email.lower();
+
+      // Never overwrite somebody else's entry, which would silently stop them
+      // from being found by email.
+      allow update: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email.lower()
+        && resource.data.email == request.resource.data.email;
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // Workspaces
+    // ---------------------------------------------------------------------
     match /workspaces/{workspaceId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == resource.data.ownerId;
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.ownerId;
+
+      allow get: if canViewWorkspace(workspaceId);
+
+      // Scoped to the caller's own UID, and provable from the document alone so
+      // the `array-contains` discovery query is not rejected.
+      allow list: if signedIn() && request.auth.uid in resource.data.members;
+
+      // The creator is the owner and the first (and only) member.
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.members == [request.auth.uid];
+
+      // Owner-only settings change. `ownerId` is immutable, so ownership can
+      // never be transferred, and the member list is not editable here.
+      allow update: if isWorkspaceOwner(workspaceId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'description', 'color', 'updatedAt']);
+
+      // Append to the derived UID list. Owner-only, and only ever growing. The
+      // affected keys are pinned so this cannot be used to smuggle a settings
+      // change past the owner-only rule above by writing both in one request.
+      allow update: if isWorkspaceOwner(workspaceId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.members is list
+        && resource.data.members is list
+        && request.resource.data.members.hasAll(resource.data.members)
+        && request.resource.data.members.size() == resource.data.members.size() + 1
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['members', 'updatedAt']);
+
+      // Shrink the derived UID list, by the owner only. The owner must still be
+      // on the list afterwards, so this can never be used to make the owner
+      // lose sight of their own workspace, and the write touches nothing else.
+      allow update: if isWorkspaceOwner(workspaceId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.members is list
+        && resource.data.members is list
+        && resource.data.members.hasAll(request.resource.data.members)
+        && request.resource.data.members.size() == resource.data.members.size() - 1
+        && request.resource.data.ownerId in request.resource.data.members
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['members', 'updatedAt']);
+
+      allow delete: if isWorkspaceOwner(workspaceId);
+
+      // -------------------------------------------------------------------
+      // Memberships
+      // -------------------------------------------------------------------
+      match /members/{memberId} {
+
+        // Anyone in the workspace can see who is in it. Profiles are
+        // denormalised onto the membership document, so no `users` read needed.
+        allow get, list: if canViewWorkspace(workspaceId);
+
+        // The workspace owner may always (re)create their own owner membership.
+        // This covers workspaces created before memberships existed, and is the
+        // only path that can ever produce a document with the `owner` role.
+        allow create: if isWorkspaceOwner(workspaceId)
+          && memberId == request.auth.uid
+          && request.resource.data.role == 'owner';
+
+        // Owner-only. A manager has no membership write path at all: they cannot
+        // add anybody, and `owner` is not assignable this way.
+        allow create: if isWorkspaceOwner(workspaceId)
+          && memberId != request.auth.uid
+          && request.resource.data.role in ['manager', 'viewer']
+          && request.resource.data.uid == memberId;
+
+        // Role changes are owner-only, can never produce a second owner or
+        // demote the workspace owner, and cannot touch anything but the role.
+        allow update: if isWorkspaceOwner(workspaceId)
+          && memberId != ownerIdOf(workspaceId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['role', 'updatedAt'])
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role in ['manager', 'viewer'];
+
+        // Removal is owner-only and the workspace owner is protected.
+        allow delete: if isWorkspaceOwner(workspaceId)
+          && memberId != ownerIdOf(workspaceId);
+
+        // Self-heal for the denormalised profile. Membership documents written
+        // before `email`/`displayName` were stored alongside the role render as
+        // "Unknown user" with a raw UID, and there is no other way to fill them
+        // in: the rules deliberately do not let one member read another's user
+        // document, because that would expose every co-member's address to
+        // everybody. So each person repairs their own row, and only these
+        // display fields — never `role`, which stays owner-only above.
+        allow update: if memberId == request.auth.uid
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['email', 'displayName', 'photoURL', 'updatedAt']);
+      }
     }
-    
-    // Boards - users can access boards in workspaces they own
+
+    // ---------------------------------------------------------------------
+    // Boards — access follows `board.workspaceId`.
+    // ---------------------------------------------------------------------
     match /boards/{boardId} {
-      allow read, write: if request.auth != null;
-      // Simple rule: authenticated users can access boards
-      // You can make this more restrictive later
+      // The field is checked before it is read so a document that cannot belong
+      // to a workspace is denied outright instead of the rule failing to
+      // evaluate. `workspaceId` is required by the create rule below, so this
+      // only ever excludes a board that predates the field.
+      allow get, list: if 'workspaceId' in resource.data
+        && canViewWorkspace(boardWorkspaceId(resource.data));
+
+      allow create: if signedIn()
+        && isManagerOrAbove(request.resource.data.workspaceId);
+
+      allow update: if isManagerOrAbove(boardWorkspaceId(resource.data))
+        // A board cannot be moved into another workspace, and nothing outside the
+        // board's own editable fields may change, so a manager cannot reach
+        // `ownerId` or the member list through a board.
+        && request.resource.data.workspaceId == resource.data.workspaceId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'description', 'color', 'columns', 'updatedAt']);
+
+      allow delete: if isManagerOrAbove(boardWorkspaceId(resource.data));
     }
-    
-    // Tasks - users can access tasks in boards they have access to
+
+    // ---------------------------------------------------------------------
+    // Tasks — access follows `task.workspaceId`, falling back to the board for
+    // documents written before that field existed.
+    // ---------------------------------------------------------------------
     match /tasks/{taskId} {
-      allow read, write: if request.auth != null;
-      // Simple rule: authenticated users can access tasks
-      // You can make this more restrictive later
+      // As with boards, a task with neither field cannot be placed in a
+      // workspace, so it is denied before either is read. One of the two is
+      // enough: `taskWorkspaceId` only reaches for the board when the task
+      // itself does not say.
+      allow get, list: if ('workspaceId' in resource.data || 'boardId' in resource.data)
+        && canViewWorkspace(taskWorkspaceId(resource.data));
+
+      allow create: if isManagerOrAbove(request.resource.data.workspaceId)
+        && exists(boardPath(request.resource.data.boardId))
+        // A task must belong to a board in the same workspace.
+        && get(boardPath(request.resource.data.boardId)).data.workspaceId == request.resource.data.workspaceId;
+
+      allow update: if isManagerOrAbove(taskWorkspaceId(resource.data))
+        // The board a task belongs to is fixed for its whole life.
+        && request.resource.data.boardId == resource.data.boardId
+        // The task must end up in the same workspace it started in. Comparing
+        // the *resolved* workspace on both sides is what makes this exact: a
+        // legacy task may be stamped for the first time, but only with the
+        // workspace its board already belongs to, and a stamped task cannot be
+        // pointed somewhere else.
+        && taskWorkspaceId(request.resource.data) == taskWorkspaceId(resource.data);
+
+      allow delete: if isManagerOrAbove(taskWorkspaceId(resource.data));
     }
-    
-    // Notifications - users can only access their own notifications
+
+    // ---------------------------------------------------------------------
+    // Notifications — unchanged, own notifications only.
+    // ---------------------------------------------------------------------
     match /notifications/{notificationId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.userId;
+      allow read, write: if signedIn() && request.auth.uid == resource.data.userId;
+      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
     }
   }
 }

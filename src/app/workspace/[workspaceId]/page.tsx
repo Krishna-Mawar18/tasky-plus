@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { WorkspaceRoleProvider, useWorkspaceRole } from '@/contexts/WorkspaceRoleContext';
 import { workspaceService, boardService, taskService } from '@/lib/services';
 import { Workspace, Board, Task } from '@/types';
 import { 
@@ -20,9 +21,23 @@ import EditWorkspaceModal from '../../../components/EditWorkspaceModal';
 
 export default function WorkspacePage() {
   const params = useParams();
+  const workspaceId = params.workspaceId as string;
+
+  return (
+    <WorkspaceRoleProvider workspaceId={workspaceId}>
+      <WorkspaceContent />
+    </WorkspaceRoleProvider>
+  );
+}
+
+function WorkspaceContent() {
+  const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
   const workspaceId = params.workspaceId as string;
+  const { loading: roleLoading, can, isOwner } = useWorkspaceRole();
+  const canCreateBoard = can('board.create');
+  const canEditWorkspace = can('workspace.edit');
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
@@ -90,7 +105,7 @@ export default function WorkspacePage() {
   }, [user, workspaceId]);
 
   const handleCreateBoard = async () => {
-    if (!user || !workspace || !newBoard.name.trim()) return;
+    if (!canCreateBoard || !user || !workspace || !newBoard.name.trim()) return;
 
     try {
       const boardData = {
@@ -98,8 +113,6 @@ export default function WorkspacePage() {
         description: newBoard.description.trim(),
         workspaceId: workspace.id,
         color: newBoard.color,
-        ownerId: user.uid,
-        members: [user.uid],
         columns: [
           { id: 'todo', name: 'To Do', order: 0, tasks: [] },
           { id: 'inprogress', name: 'In Progress', order: 1, tasks: [] },
@@ -129,7 +142,7 @@ export default function WorkspacePage() {
   };
 
   const handleEditWorkspace = async (data: { name: string; description: string; color: string }) => {
-    if (!workspace) return;
+    if (!canEditWorkspace || !workspace) return;
     
     try {
       await workspaceService.updateWorkspace(workspace.id, data);
@@ -140,7 +153,7 @@ export default function WorkspacePage() {
     }
   };
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="min-h-screen bg-[#f8f8f6] flex items-center justify-center">
         <div className="text-black text-xl font-mono">Loading workspace...</div>
@@ -204,18 +217,33 @@ export default function WorkspacePage() {
                     <p className="text-xs sm:text-sm text-gray-600 font-mono truncate hidden sm:block">{workspace.description}</p>
                   )}
                 </div>
+                {isOwner && (
+                  <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200 font-mono text-[10px] font-bold uppercase tracking-wide flex-shrink-0">
+                    Owner
+                  </span>
+                )}
               </div>
             </div>
             
             <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
-              <button 
-                onClick={() => setShowEditModal(true)}
-                className="bg-black text-white px-2 py-2 sm:px-4 sm:py-2 rounded-lg font-mono font-bold text-xs sm:text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-1 sm:space-x-2"
+              <button
+                onClick={() => router.push(`/workspace/${workspaceId}/settings/members`)}
+                className="bg-white text-black px-2 py-2 sm:px-4 sm:py-2 rounded-lg font-mono font-bold text-xs sm:text-sm hover:bg-black hover:text-white border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-1 sm:space-x-2"
+                title="Members"
               >
-                <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Edit Workspace</span>
-                <span className="sm:hidden">Edit</span>
+                <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Members</span>
               </button>
+              {canEditWorkspace && (
+                <button 
+                  onClick={() => setShowEditModal(true)}
+                  className="bg-black text-white px-2 py-2 sm:px-4 sm:py-2 rounded-lg font-mono font-bold text-xs sm:text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-1 sm:space-x-2"
+                >
+                  <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Edit Workspace</span>
+                  <span className="sm:hidden">Edit</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -345,13 +373,15 @@ export default function WorkspacePage() {
             <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg animate-fadein">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold font-mono">Your Boards</h2>
-                <button
-                  onClick={() => setShowCreateBoard(true)}
-                  className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>New Board</span>
-                </button>
+                {canCreateBoard && (
+                  <button
+                    onClick={() => setShowCreateBoard(true)}
+                    className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>New Board</span>
+                  </button>
+                )}
               </div>
 
               {/* Create Board Form */}
@@ -433,7 +463,11 @@ export default function WorkspacePage() {
                       <Plus className="w-10 h-10 text-blue-500" />
                     </div>
                     <h3 className="text-xl font-bold text-gray-800 mb-2">No boards yet</h3>
-                    <p className="text-gray-500">Create your first board to get started!</p>
+                    <p className="text-gray-500">
+                      {canCreateBoard
+                        ? 'Create your first board to get started!'
+                        : 'There are no boards in this workspace yet.'}
+                    </p>
                   </div>
                 ) : (
                   boards.map((board, index) => (

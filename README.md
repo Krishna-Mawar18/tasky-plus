@@ -11,6 +11,15 @@ A modern, full-stack task management web app built with Next.js 15, TypeScript, 
 - Real-time workspace listing with live updates
 - Owner-based access control
 
+### 👥 Workspace Members & Roles
+
+- Three roles per workspace: **Owner**, **Manager**, **Viewer**
+- Members managed at *Workspace → Members*, by email address
+- Membership stored as `workspaces/{workspaceId}/members/{uid}` and enforced by security rules
+- Add, re-role and remove members are **owner-only**; a member is added as Manager or Viewer
+- Change a member's role or remove them (owner only)
+- Viewers get a read-only board: no task creation, editing, deletion, or drag-and-drop
+
 ### 📋 Board Management
 
 - Create boards within workspaces
@@ -18,20 +27,23 @@ A modern, full-stack task management web app built with Next.js 15, TypeScript, 
 - Default Kanban columns (To Do, In Progress, Done)
 - Board listing with task counts and creation dates
 
-### 🎯 Kanban Board (Drag-and-Drop Ready)
+### 🎯 Kanban Board (Drag-and-Drop)
 
 - Three-column layout: To Do → In Progress → Done
+- Drag cards within a column or across columns; drop position is persisted immediately
 - Create tasks with title, description, priority, and due dates
 - Priority levels: Low (Green), Medium (Yellow), High (Red)
-- Optimistic UI updates for instant feedback
+- Optimistic UI updates for instant feedback, with automatic rollback if a save fails
 - Task editing and deletion with confirmation modals
 - Move tasks between columns with forward/back buttons
 - Due date tracking with visual indicators (Overdue, Today, Tomorrow, X days)
+- Disabled for Viewers, who see the same board read-only
 
 ### 👤 User Authentication
 
 - Google Sign-In via Firebase Authentication
 - Automatic user profile creation in Firestore
+- Each signed-in user publishes a hashed email entry so other users can add them by address
 - Protected routes with loading states
 - Sign out functionality
 
@@ -102,23 +114,35 @@ tasky/
 │   │   └── workspace/
 │   │       ├── [workspaceId]/
 │   │       │   ├── page.tsx          # Workspace view (boards list)
+│   │       │   ├── settings/
+│   │       │   │   └── members/
+│   │       │   │       └── page.tsx  # Members list, roles, add/remove
 │   │       │   └── board/
 │   │       │       └── [boardId]/
 │   │       │           └── page.tsx  # Kanban board view
 │   │       └── ...
 │   ├── contexts/
-│   │   └── AuthContext.tsx           # Firebase auth state management
+│   │   ├── AuthContext.tsx           # Firebase auth state management
+│   │   └── WorkspaceRoleContext.tsx  # Resolves the current user's role
 │   ├── lib/
 │   │   ├── firebase.ts               # Firebase initialization
-│   │   ├── services.ts               # Firestore CRUD (workspaces, boards, tasks, users)
+│   │   ├── services.ts               # Firestore CRUD (workspaces, members, boards, tasks, users)
+│   │   ├── permissions.ts            # Role → permission matrix
+│   │   ├── memberErrors.ts           # Typed member-management errors
+│   │   ├── userEmailIndex.ts         # Hash, resolve and publish user emails
 │   │   ├── notificationService.ts    # Enhanced notification system
+│   │   ├── taskOrder.ts              # Sparse task ordering + rebalancing
 │   │   └── services_new.ts           # (Backup/alternative services)
 │   ├── components/
 │   │   ├── CreateModal.tsx           # Create workspace modal
 │   │   ├── CreateBoardModal.tsx      # Create board modal
+│   │   ├── AddMemberModal.tsx        # Add member by email + role
 │   │   ├── EditWorkspaceModal.tsx    # Edit workspace modal
 │   │   ├── EditBoardModal.tsx        # Edit board modal
 │   │   ├── DeleteConfirmationModal.tsx
+│   │   ├── KanbanBoard.tsx           # DnD context, read-only aware
+│   │   ├── KanbanColumn.tsx          # Column + drop target
+│   │   ├── TaskCard.tsx              # Sortable card
 │   │   ├── NotificationPopup.tsx     # Toast-style notifications
 │   │   ├── NotificationDrawer.tsx    # Notification side panel
 │   │   ├── NotificationCard.tsx      # Individual notification card
@@ -126,6 +150,8 @@ tasky/
 │   ├── types/
 │   │   └── index.ts                  # TypeScript interfaces
 │   └── ...
+├── scripts/
+│   └── migrate-workspace-members.mjs # Optional owner-membership backfill
 ├── firestore.rules                   # Firestore security rules
 ├── firestore.indexes.json            # Composite indexes for queries
 ├── firebase.json                     # Firebase hosting config
@@ -204,21 +230,136 @@ tasky/
 
 7. **Open** [http://localhost:3000](http://localhost:3000)
 
-## 🔐 Firestore Security Rules
+## 🔐 Workspaces, Members & Security Rules
 
-The `firestore.rules` file includes rules for:
+### Roles
 
-- **Users**: Read/write own profile
-- **Workspaces**: Owner can read/write; create requires ownership
-- **Boards**: Authenticated users (can be restricted further)
-- **Tasks**: Authenticated users (can be restricted further)
-- **Notifications**: Users can only access their own
+| Capability | Owner | Manager | Viewer |
+|---|---|---|---|
+| View workspace, boards, tasks, members | ✅ | ✅ | ✅ |
+| Create / edit / delete boards | ✅ | ✅ | ❌ |
+| Create / edit / delete tasks | ✅ | ✅ | ❌ |
+| Move tasks (drag and drop) | ✅ | ✅ | ❌ |
+| Add members | ✅ | ❌ | ❌ |
+| Change a member's role | ✅ | ❌ | ❌ |
+| Remove a member | ✅ | ❌ | ❌ |
+| Edit or delete the workspace | ✅ | ❌ | ❌ |
 
-Deploy rules:
+There is exactly one owner per workspace. Ownership cannot be transferred, the
+owner's membership cannot be deleted or demoted, and `owner` is not an assignable
+role when adding or updating a member.
+
+### Where a membership lives
+
+```text
+workspaces/{workspaceId}                  # the workspace itself
+workspaces/{workspaceId}/members/{uid}    # role + profile  ← source of truth
+workspaces/{workspaceId}.members          # derived UID list  ← discovery only
+```
+
+`workspaces.members` exists only so workspace discovery can keep using
+`where('members', 'array-contains', uid)`. It is written in the same batch as
+the membership document and is never read to decide a role. Roles come **only**
+from the `members` subcollection, and the role matrix in
+`src/lib/permissions.ts` mirrors `firestore.rules` exactly.
+
+### Adding a member by email
+
+A browser client cannot list Firebase Auth users, so each user publishes their
+own entry in a top-level collection:
+
+```text
+userEmailIndex/{sha256(normalizedEmail)}   { uid, email, displayName, photoURL }
+```
+
+The address is trimmed and lower-cased before hashing, the document id is a
+SHA-256 digest rather than the address itself, and rules restrict the collection
+to `get` for any signed-in user, `list` for nobody, and writes only to the
+caller's own entry with an `email` matching their own auth token. The client
+re-checks the stored `email` on read, so a stale or hand-edited entry resolves to
+nobody rather than the wrong account.
+
+A consequence: **the person must have signed in to Tasky at least once** before
+they can be added. There are no invitations.
+
+That entry is written on sign-in, so the order matters when the rules change.
+After deploying new rules, every existing user has to load the app once before
+they become findable — a tab that was already open will have attempted the write
+against the old rules and failed. The app retries on reconnect and whenever the
+tab is brought back into view, and the Members page shows a banner with a
+**Publish my address now** button if the signed-in user's own entry could not be
+written, so a failed publish is never silent. If that banner is visible for
+somebody, they cannot be added by anyone until it clears.
+
+If an address still does not resolve once the banner is clear for both people,
+the address has to match the one they signed in with character for character.
+
+### Deploying the rules
 
 ```bash
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules --project <project id>
 ```
+
+### Backfilling owner memberships
+
+Workspaces created before memberships existed have no `members/{ownerId}`
+document. Two options, neither of which touches anything else:
+
+1. **Automatic (default).** The owner opening such a workspace repairs it, via
+   `memberService.ensureOwnerMembership`. The rules permit exactly one
+   self-repair: the workspace owner creating their own `owner` document. It is
+   idempotent and cannot grant access to anyone else.
+2. **Bulk, before deploying the rules.** `scripts/migrate-workspace-members.mjs`
+   creates the same documents in one pass. It defaults to a dry run, needs
+   `--apply` to write, and uses the Firestore REST API with your own OAuth
+   access token — no service account file and no new npm dependency.
+
+   ```powershell
+   $env:FIREBASE_ACCESS_TOKEN = "<token from `gcloud auth print-access-token`>"
+   $env:FIREBASE_PROJECT_ID   = "<project id>"
+   node scripts/migrate-workspace-members.mjs           # dry run
+   node scripts/migrate-workspace-members.mjs --apply   # writes
+   ```
+
+   It never migrates historic members of `workspaces.members` and never assigns
+   a role to anyone except an existing `ownerId`.
+
+### What the rules cover
+
+- **Users** — own document only, plus a single append to a member's own
+  `workspaces` array by someone who already manages that workspace
+- **userEmailIndex** — point reads for signed-in users, self-writes only
+- **Workspaces** — members and the owner can read; only the owner can edit or
+  delete; `ownerId` is immutable; the derived UID list can only be appended by a
+  manager and only removed by the owner, never removing the owner
+- **Members** — readable by any member; addable by a manager or owner with role
+  `manager` or `viewer`; role changes and removals are owner-only; the owner's
+  own document is protected
+- **Boards / Tasks** — access follows `workspaceId`, with tasks falling back to
+  their board for documents written before `workspaceId` existed; managers and
+  owners may write, viewers may only read
+- **Notifications** — own notifications only
+
+### Query shapes the rules expect
+
+Because access to a board or task comes from the document itself, a `list` query
+has to be narrowed by the same field the rule reads. Every query in the app
+already is:
+
+| Collection | Query |
+|------------|-------|
+| `workspaces` | `where('members', 'array-contains', uid)` |
+| `boards` | `where('workspaceId', '==', workspaceId)` |
+| `tasks` | `where('boardId', '==', boardId)` or `where('assigneeId', '==', uid)` |
+
+A new query that filters on none of these should be treated as unproven until it
+has been checked, rather than assumed to work. Verifying the rules through the
+Firestore emulator is worth it before a deploy: start it with
+`firebase emulators:start --only firestore`. Note that the emulator evaluates a
+`list` rule against a placeholder document when the query filters on a field the
+rule never reads, which can reject a query that production would allow. When
+that happens, exercise the same access decision with a `get` on the document
+instead of trusting the query result.
 
 ## 📝 Available Scripts
 
@@ -229,6 +370,7 @@ firebase deploy --only firestore:rules
 | `npm run build` | Build for production |
 | `npm run start` | Start production server |
 | `npm run lint` | Run ESLint |
+| `npm run typecheck` | Run `tsc --noEmit` |
 
 ## 🏗 Data Model
 
@@ -240,8 +382,24 @@ interface Workspace {
   name: string;
   description?: string;
   color: string;           // Tailwind color class
-  ownerId: string;
-  members: string[];       // User UIDs
+  ownerId: string;         // immutable; the root of trust for access
+  members: string[];       // derived UID list, kept in step with /members
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### WorkspaceMember
+
+```typescript
+interface WorkspaceMember {
+  uid: string;
+  role: 'owner' | 'manager' | 'viewer';
+  email?: string | null;         // denormalised: avoids cross-user reads
+  displayName?: string | null;
+  photoURL?: string | null;
+  addedBy?: string;
+  addedByEmail?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -277,7 +435,8 @@ interface Task {
   tags: string[];
   columnId: string;
   boardId: string;
-  workspaceId: string;
+  workspaceId: string;     // access is decided from this
+  order: number;           // sparse position within the column
   createdAt: Date;
   updatedAt: Date;
 }
@@ -388,9 +547,10 @@ Click the link in console error, or run `firebase deploy --only firestore:indexe
 
 ## 🗺 Roadmap
 
-- [ ] Drag-and-drop task reordering (dnd-kit)
+- [x] Drag-and-drop task reordering (dnd-kit)
+- [x] Workspace members and Owner/Manager/Viewer roles
 - [ ] Task comments & mentions
-- [ ] Team invitations & roles (Admin/Member/Viewer)
+- [ ] Email invitations (today a member must have signed in once)
 
 ## 🤝 Contributing
 
