@@ -9,19 +9,25 @@ import {
   CheckCircle,
   Circle,
   Clock,
-  Edit,
-  Trash2,
 } from 'lucide-react';
 
 export interface TaskCardActions {
-  onEdit?: (task: Task) => void;
-  onDelete?: (taskId: string) => void;
   /** Directional "move back" / "move forward" buttons, as on the existing board. */
   onStep?: (taskId: string, direction: -1 | 1) => void;
   canStepBack?: boolean;
   canStepForward?: boolean;
   /** Viewer mode: the card can be read but not dragged or edited. */
   readOnly?: boolean;
+  /**
+   * Opens the task detail modal.
+   *
+   * Optional so `TaskCardBody` stays usable in the `DragOverlay`, where a click
+   * target would be wrong. Editing and deleting live in the expanded modal, so
+   * the card carries no edit/delete controls of its own. Viewers get this too —
+   * reading a task, its comments and its attachments is exactly what their role
+   * allows.
+   */
+  onOpen?: (task: Task) => void;
 }
 
 interface TaskCardProps extends TaskCardActions {
@@ -98,9 +104,8 @@ export function TaskCard({ task, avatar, readOnly = false, ...actions }: TaskCar
  */
 export function TaskCardBody({ task, avatar, ...actions }: TaskCardProps) {
   const {
-    onEdit,
-    onDelete,
     onStep,
+    onOpen,
     canStepBack = false,
     canStepForward = false,
   } = actions;
@@ -111,8 +116,58 @@ export function TaskCardBody({ task, avatar, ...actions }: TaskCardProps) {
   const stopClick = (event: React.MouseEvent) => event.stopPropagation();
   const stopKey = (event: React.KeyboardEvent) => event.stopPropagation();
 
+  /**
+   * Open the task, but only for a click that was not aimed at something else.
+   *
+   * `closest` walks up from the clicked node, so a press that started on the
+   * step button — or any future control added inside the card — is ignored here
+   * instead of also opening the modal behind the dialog.
+   *
+   * The card root itself carries `role="button"` when it is openable, so
+   * `closest` matches *the card* on every click. That match has to be ignored or
+   * no click would ever open the modal — most visibly for a viewer, whose only
+   * way in is the card click. Only a control nested below the card root counts.
+   *
+   * This does not interfere with dragging. dnd-kit's `PointerSensor` needs
+   * `activationConstraint.distance` (8px on the board) before it will start a
+   * drag, so a press that never travels that far arrives here as a plain click
+   * and a press that does is consumed by the sensor as a drag. The two cannot
+   * both fire for one gesture.
+   */
+  const handleOpen = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!onOpen) return;
+    const target = event.target as HTMLElement;
+    const control = target.closest('button, a, input, textarea, select, [role="button"]');
+    if (control && control !== event.currentTarget) return;
+    onOpen(task);
+  };
+
+  /**
+   * Keyboard equivalent of the click.
+   *
+   * The sortable wrapper already owns Enter/Space for the drag handle, so this
+   * only fires when the card itself has focus, and never while the board is
+   * read-only for that user.
+   */
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onOpen) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    onOpen(task);
+  };
+
   return (
-    <div className="bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm p-5 rounded-xl border border-gray-200/60 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 cursor-grab active:cursor-grabbing hover:scale-[1.03] hover:-translate-y-1 relative overflow-hidden">
+    <div
+      onClick={handleOpen}
+      onKeyDown={handleKeyDown}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      aria-label={onOpen ? `Open task ${task.title}` : undefined}
+      className={`bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm p-5 rounded-xl border border-gray-200/60 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 cursor-grab active:cursor-grabbing hover:scale-[1.03] hover:-translate-y-1 relative overflow-hidden ${
+        onOpen ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500' : ''
+      }`}
+    >
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50/20 via-transparent to-purple-50/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl" />
 
       {/* Task Header */}
@@ -120,42 +175,6 @@ export function TaskCardBody({ task, avatar, ...actions }: TaskCardProps) {
         <h4 className="font-mono font-bold text-base text-gray-900 flex-1 pr-2 group-hover:text-blue-700 transition-colors leading-tight">
           {task.title}
         </h4>
-        <div className="flex items-center space-x-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300">
-          {onEdit && (
-            <button
-              onPointerDown={stopPointer}
-              onKeyDown={stopKey}
-              onClick={(event) => {
-                stopClick(event);
-                onEdit(task);
-              }}
-              className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
-              title="Edit task"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-blue-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Edit className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-blue-600 transition-colors duration-300" />
-              </div>
-            </button>
-          )}
-          {onDelete && (
-            <button
-              onPointerDown={stopPointer}
-              onKeyDown={stopKey}
-              onClick={(event) => {
-                stopClick(event);
-                onDelete(task.id);
-              }}
-              className="relative w-8 h-8 sm:w-9 sm:h-9 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl hover:bg-red-50 hover:border-red-200 hover:shadow-lg sm:hover:scale-110 transition-all duration-300 group/btn overflow-hidden"
-              title="Delete task"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 sm:group-hover/btn:text-red-600 transition-colors duration-300" />
-              </div>
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Task Description */}

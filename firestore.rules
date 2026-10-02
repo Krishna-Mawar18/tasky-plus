@@ -108,6 +108,112 @@ service cloud.firestore {
       return ('workspaceId' in data) ? data.workspaceId : get(boardPath(data.boardId)).data.workspaceId;
     }
 
+    /**
+     * The task a comment or attachment hangs off, from the subcollection path.
+     *
+     * Access to a comment is decided by the task it belongs to, not by anything
+     * on the comment itself — otherwise a comment document would have to carry a
+     * workspace id that could disagree with its parent.
+     */
+    function taskAt(taskId) {
+      return get(/databases/$(database)/documents/tasks/$(taskId)).data;
+    }
+
+    /**
+     * Whether every id in `uids` is a current member of `workspaceId`.
+     *
+     * Rules cannot loop over a list, so the caller checks each position
+     * explicitly. An empty list is vacuously fine: an unassigned task is
+     * legitimate.
+     *
+     * The cap is 5 (mirrored by MAX_ASSIGNEES in AssigneePicker.tsx). It is
+     * low on purpose: every membership check is a distinct document read, and
+     * Firestore allows 10 document reads per single-document request. The
+     * task-update rule already spends two on the workspace and the caller's
+     * membership, so 5 assignees fits with room to spare; 8 would sit exactly on
+     * the ceiling and fail intermittently. This is what stops a task being
+     * assigned to somebody outside the workspace — the picker only offers
+     * members, but the picker is a convenience, this is the control.
+     */
+    function allAssigneesAreMembers(workspaceId, uids) {
+      return uids.size() == 0
+        || (uids.size() <= 5
+          && isMemberOf(workspaceId, uids[0])
+          && (uids.size() < 2 || isMemberOf(workspaceId, uids[1]))
+          && (uids.size() < 3 || isMemberOf(workspaceId, uids[2]))
+          && (uids.size() < 4 || isMemberOf(workspaceId, uids[3]))
+          && (uids.size() < 5 || isMemberOf(workspaceId, uids[4])));
+    }
+
+    /**
+     * The legacy single-assignee fields must keep mirroring `assigneeIds[0]`.
+     *
+     * `statsService` and the assignment notification still read `assigneeId`, so
+     * a write that sets the array without updating the mirror would silently
+     * desynchronise the two. Writing both together is required; the `hasOnly`
+     * check below makes sure a client cannot update one without the other.
+     */
+    function assigneeMirrorIsConsistent(data) {
+      return ('assigneeIds' in data)
+        && (
+          (data.assigneeIds.size() == 0
+            && (!('assigneeId' in data) || data.assigneeId == null)
+            && (!('assigneeName' in data) || data.assigneeName == null))
+          || (data.assigneeIds.size() > 0
+            && 'assigneeNames' in data
+            && data.assigneeNames.size() == data.assigneeIds.size()
+            && data.assigneeId == data.assigneeIds[0]
+            && data.assigneeName == data.assigneeNames[0])
+        );
+    }
+
+    /**
+     * An archived task always carries the timestamp and author the retention
+     * sweep needs, and an unarchived one carries neither.
+     *
+     * Without this, `archived == true` with no `archivedAt` would be a task the
+     * 90-day sweep can never find, and the board would hide a task permanently
+     * with no way to restore it.
+     */
+    function archiveFieldsAreConsistent(data) {
+      return ('archived' in data && data.archived == true)
+        ? ('archivedAt' in data && data.archivedAt != null
+          && 'archivedBy' in data && data.archivedBy == request.auth.uid)
+        : (!('archivedAt' in data) || data.archivedAt == null)
+          && (!('archivedBy' in data) || data.archivedBy == null);
+    }
+
+    /**
+     * The single S3 key shape, derived from ids only.
+     *
+     * The client may not choose where a file lives: the key is rebuilt from the
+     * document path and the ids on the parent task, and compared. A mismatch is a
+     * rejected write, so metadata cannot point at another task's object or at a
+     * path outside the workspace.
+     */
+    function expectedAttachmentKey(taskId, attachmentId) {
+      return 'workspaces/' + taskWorkspaceId(taskAt(taskId))
+        + '/boards/' + taskAt(taskId).boardId
+        + '/tasks/' + taskId
+        + '/attachments/' + attachmentId;
+    }
+
+    /**
+     * Attachments and comments accept exactly these extensions, and nothing else.
+     *
+     * Mirrors `ALLOWED_ATTACHMENT_EXTENSIONS` in `src/lib/fileValidation.ts`.
+     *
+     * The size and length ceilings are inlined at their use sites rather than
+     * bound to a constant: Firestore rules permit only `function` and `match`
+     * declarations at this level, so a top-level `const`/`var` is a compile error.
+     * A rules file cannot import from TypeScript, so these two numbers have to be
+     * written down twice — the comments at each use site name the other copy.
+     */
+    function isAllowedAttachmentExtension(extension) {
+      return extension in ['.jpg', '.jpeg', '.png', '.pdf', '.xls', '.xlsx', '.md'];
+    }
+
+
     // ---------------------------------------------------------------------
     // Users — self service only. Members are listed from the denormalised
     // profile on the membership document, so no cross-user read is needed.
@@ -310,7 +416,16 @@ service cloud.firestore {
       allow create: if isManagerOrAbove(request.resource.data.workspaceId)
         && exists(boardPath(request.resource.data.boardId))
         // A task must belong to a board in the same workspace.
-        && get(boardPath(request.resource.data.boardId)).data.workspaceId == request.resource.data.workspaceId;
+        && get(boardPath(request.resource.data.boardId)).data.workspaceId == request.resource.data.workspaceId
+        // New tasks start unarchived, and the archive fields are pinned so a
+        // create cannot smuggle in a pre-archived document with no retention
+        // data — which the sweep could never find.
+        && (!('archived' in request.resource.data) || request.resource.data.archived == false)
+        && (!('archivedAt' in request.resource.data) || request.resource.data.archivedAt == null)
+        && (!('archivedBy' in request.resource.data) || request.resource.data.archivedBy == null)
+        // Every assignee must already be a member of the same workspace.
+        && (!('assigneeIds' in request.resource.data)
+          || allAssigneesAreMembers(request.resource.data.workspaceId, request.resource.data.assigneeIds));
 
       allow update: if isManagerOrAbove(taskWorkspaceId(resource.data))
         // The board a task belongs to is fixed for its whole life.
@@ -320,9 +435,115 @@ service cloud.firestore {
         // legacy task may be stamped for the first time, but only with the
         // workspace its board already belongs to, and a stamped task cannot be
         // pointed somewhere else.
-        && taskWorkspaceId(request.resource.data) == taskWorkspaceId(resource.data);
+        && taskWorkspaceId(request.resource.data) == taskWorkspaceId(resource.data)
+        // `archivedBy` must be whoever is performing the write, so an audit trail
+        // cannot be forged by naming somebody else.
+        && archiveFieldsAreConsistent(request.resource.data)
+        // The single-assignee mirror has to be written together with the array.
+        && (!('assigneeIds' in request.resource.data)
+          || (!('assigneeId' in request.resource.data)
+            ? false
+            : assigneeMirrorIsConsistent(request.resource.data)))
+        && (!('assigneeIds' in request.resource.data)
+          || allAssigneesAreMembers(taskWorkspaceId(request.resource.data), request.resource.data.assigneeIds));
 
       allow delete: if isManagerOrAbove(taskWorkspaceId(resource.data));
+
+      // -------------------------------------------------------------------
+      // Comments
+      //
+      // `tasks/{taskId}/comments/{commentId}`. Access follows the parent task,
+      // so a comment can never be more visible than the task it is on.
+      //
+      // Deliberately open to viewers: joining the discussion is a read/write of
+      // the discussion only and confers nothing on the task itself. A comment is
+      // immutable except by its author, and deletable by its author or by the
+      // workspace owner.
+      // -------------------------------------------------------------------
+      match /comments/{commentId} {
+        allow get, list: if canViewWorkspace(taskWorkspaceId(taskAt(taskId)));
+
+        // The author is the caller, and cannot be changed later. `uid` is stored
+        // alongside `authorId` purely so a list query can filter on it without a
+        // join; `hasOnly` stops a client from adding anything else.
+        allow create: if canViewWorkspace(taskWorkspaceId(taskAt(taskId)))
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.content is string
+          // Rules have no `trim()`, so a whitespace-only string passes this.
+          // `commentService.addComment` trims and refuses the empty result, and
+          // the composer disables the button — this rule is the length ceiling,
+          // not the content policy.
+          && request.resource.data.content.size() > 0
+          && request.resource.data.content.size() <= 2000
+          && request.resource.data.keys().hasOnly([
+            'uid', 'authorId', 'authorName', 'authorPhotoURL',
+            'content', 'createdAt', 'updatedAt'
+          ]);
+
+        // Edit your own text. The author, the id mirror and `createdAt` are
+        // pinned, so an edit cannot rewrite who said it or when.
+        allow update: if canViewWorkspace(taskWorkspaceId(taskAt(taskId)))
+          && resource.data.authorId == request.auth.uid
+          && request.resource.data.authorId == resource.data.authorId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.content is string
+          && request.resource.data.content.size() > 0
+          && request.resource.data.content.size() <= 2000;
+
+        // Your own comment, or any comment if you own the workspace.
+        allow delete: if canViewWorkspace(taskWorkspaceId(taskAt(taskId)))
+          && (resource.data.authorId == request.auth.uid || isWorkspaceOwner(taskWorkspaceId(taskAt(taskId))));
+      }
+
+      // -------------------------------------------------------------------
+      // Attachments
+      //
+      // `tasks/{taskId}/attachments/{attachmentId}`. Metadata only — no bytes
+      // live in Firestore, and there is no base64 or binary field anywhere in
+      // this rule.
+      //
+      // Reading is open to any workspace member. Uploading requires manager or
+      // above. The S3 key is recomputed from the document path rather than
+      // trusted, so metadata cannot be pointed at another task's object.
+      // -------------------------------------------------------------------
+      match /attachments/{attachmentId} {
+        allow get, list: if canViewWorkspace(taskWorkspaceId(taskAt(taskId)));
+
+        allow create: if isManagerOrAbove(taskWorkspaceId(taskAt(taskId)))
+          && request.resource.data.uploadedBy == request.auth.uid
+          && request.resource.data.taskId == taskId
+          // The metadata may not claim a workspace or board other than the one
+          // its parent task is actually in.
+          && request.resource.data.workspaceId == taskWorkspaceId(taskAt(taskId))
+          && request.resource.data.boardId == taskAt(taskId).boardId
+          // The key is derived, never chosen. This is what confines an object to
+          // the workspace and task that own it.
+          && request.resource.data.s3Key == expectedAttachmentKey(taskId, attachmentId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 255
+          && isAllowedAttachmentExtension(request.resource.data.extension)
+          && request.resource.data.size is int
+          && request.resource.data.size > 0
+          && request.resource.data.size <= 10485760
+          // Exactly the fields `attachmentService.attachFile` writes. No
+          // free-form field can be added, which is what keeps a base64 or binary
+          // payload from ever being smuggled into Firestore as a "field".
+          && request.resource.data.keys().hasOnly([
+            'taskId', 'workspaceId', 'boardId', 'name', 'extension',
+            'contentType', 'size', 's3Key', 'uploadedBy', 'createdAt'
+          ]);
+
+        // Metadata is immutable. The uploader deletes and re-uploads instead,
+        // which keeps the key and the recorded size true.
+        allow update: if false;
+
+        // Your own attachment, or any if you own the workspace.
+        allow delete: if isManagerOrAbove(taskWorkspaceId(taskAt(taskId)))
+          && (resource.data.uploadedBy == request.auth.uid || isWorkspaceOwner(taskWorkspaceId(taskAt(taskId))));
+      }
     }
 
     // ---------------------------------------------------------------------

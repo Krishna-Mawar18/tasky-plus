@@ -100,8 +100,25 @@ export interface Task {
   description?: string;
   status: TaskStatus;
   priority: TaskPriority;
+  /**
+   * Primary assignee, kept in step with `assigneeIds[0]`.
+   *
+   * This field predates multi-assignee support and is still what
+   * `statsService.getQuickStats` filters on and what the assignment
+   * notification is addressed to, so it is written as the first entry of
+   * `assigneeIds` rather than being retired.
+   */
   assigneeId?: string;
   assigneeName?: string;
+  /**
+   * Every assignee, in the order they were picked. Empty means unassigned.
+   *
+   * Only workspace members may appear here; the Firestore rules reject an id
+   * that is not in the workspace's `members` list.
+   */
+  assigneeIds?: string[];
+  /** Parallel to `assigneeIds`, so a card renders without a second read. */
+  assigneeNames?: string[];
   dueDate?: Date | null;
   tags: string[];
   createdAt: Date;
@@ -115,8 +132,110 @@ export interface Task {
    * dropped between two others by writing a single document.
    */
   order: number;
+  /**
+   * `true` once the task has been archived. The document stays in the `tasks`
+   * collection — archiving never moves a task anywhere.
+   *
+   * Absent on documents written before archiving existed, which is why
+   * consumers must treat a missing value as "not archived" rather than reading
+   * it directly.
+   */
+  archived?: boolean;
+  /** When the task was archived. Drives the 90-day retention sweep. */
+  archivedAt?: Date | null;
+  /** Who archived it. */
+  archivedBy?: string | null;
   // Optional properties added during data loading for UI purposes
   boardName?: string;
+}
+
+/**
+ * A comment on a task, at `tasks/{taskId}/comments/{commentId}`.
+ *
+ * A subcollection rather than an array on the task document, so a busy task
+ * cannot push the task itself past Firestore's document size limit and so a
+ * page of comments can be read on its own.
+ *
+ * `content` is Markdown. It is rendered through the sanitising renderer in
+ * `src/components/task/Markdown.tsx`.
+ */
+export interface TaskComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorPhotoURL: string | null;
+  content: string;
+  createdAt: Date | null;
+  /** `null` until the comment has been edited. */
+  updatedAt: Date | null;
+}
+
+/** Formats Tasky accepts as attachments. */
+export type AttachmentExtension = '.jpg' | '.jpeg' | '.png' | '.pdf' | '.xls' | '.xlsx' | '.md';
+
+/**
+ * Attachment metadata only, at `tasks/{taskId}/attachments/{attachmentId}`.
+ *
+ * There is no URL field on purpose: a signed URL is short-lived and is minted
+ * on demand by the storage service. Storing one would leave a stale, possibly
+ * public, link behind.
+ */
+export interface TaskAttachment {
+  id: string;
+  workspaceId: string;
+  boardId: string;
+  /** Original filename as uploaded. */
+  name: string;
+  size: number;
+  contentType: string;
+  /** Object key in the future S3 bucket. Not a URL. */
+  s3Key: string;
+  uploadedBy: string;
+  createdAt: Date | null;
+}
+
+/**
+ * Outcome of one object-store deletion attempt.
+ *
+ * Split into `deleted` and `pending` on purpose. A report that only had a
+ * boolean would let an unreachable bucket look identical to a successful
+ * deletion, which is exactly the failure mode this phase must not have.
+ */
+export interface StorageDeletionReport {
+  /** Keys the object store confirmed removal of. */
+  deleted: string[];
+  /**
+   * Keys that still exist because no storage provider could reach them. The
+   * caller must surface this rather than discard it.
+   */
+  pending: string[];
+  /** Human-readable reason for every key in `pending`. */
+  reason?: string;
+}
+
+/** Ids that identify where an object belongs. Never trusted from the client. */
+export interface AttachmentObjectLocation {
+  workspaceId: string;
+  boardId: string;
+  taskId: string;
+  attachmentId: string;
+}
+
+/** Result of a successful object upload. Carries the key, never a URL. */
+export interface AttachmentUploadResult {
+  s3Key: string;
+  /** Bytes actually written. Lets a caller detect a truncated upload. */
+  size: number;
+}
+
+/** What the cascade and the retention sweep actually removed. */
+export interface TaskDeletionReport {
+  taskId: string;
+  commentsDeleted: number;
+  attachmentMetadataDeleted: number;
+  storage: StorageDeletionReport;
+  /** True only when nothing is left behind, including objects. */
+  fullyDeleted: boolean;
 }
 
 /**

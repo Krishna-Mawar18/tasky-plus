@@ -17,12 +17,15 @@ import {
   setDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Workspace, WorkspaceMember, WorkspaceRole, Board, Task, QuickStats, TaskOrderUpdate } from '@/types';
+import { Workspace, WorkspaceMember, WorkspaceRole, Board, Task, QuickStats, TaskOrderUpdate, TaskDeletionReport } from '@/types';
 import { enhancedNotificationService } from './notificationService';
 import { gridOrders, isMissingOrder, sortTasksByOrder, tasksInColumn } from './taskOrder';
 import { isWorkspaceRole } from './permissions';
 import { MemberOperationError } from './memberErrors';
 import { lookupUserByEmail, normalizeEmail } from './userEmailIndex';
+import { restoreColumnId } from './taskArchive';
+import { resolveAttachmentStorage } from './storageService';
+import { BoardColumn } from '@/types';
 
 /** Firestore caps a single batch at 500 writes. */
 const FIRESTORE_BATCH_LIMIT = 450;
@@ -737,9 +740,155 @@ export const taskService = {
     }
   },
 
-  async deleteTask(id: string): Promise<void> {
+  /**
+   * Change who a task is assigned to.
+   *
+   * `assigneeId`/`assigneeName` are always rewritten as the first entry, so
+   * `statsService.getQuickStats` (which filters on `assigneeId`) and the
+   * assignment notification keep behaving exactly as they did when a task had a
+   * single assignee.
+   *
+   * The members are resolved by the caller from the workspace member list; the
+   * rules independently reject any uid that is not in the workspace, so a
+   * tampered client cannot assign a task to an outsider.
+   */
+  async setAssignees(
+    id: string,
+    members: { uid: string; name: string }[],
+  ): Promise<void> {
     if (!db) throw new Error('Firebase not configured');
+
+    const unique = dedupeAssignees(members);
+    const primary = unique[0];
+
+    await updateDoc(doc(db, 'tasks', id), {
+      assigneeIds: unique.map((member) => member.uid),
+      assigneeNames: unique.map((member) => member.name),
+      assigneeId: primary?.uid ?? null,
+      assigneeName: primary?.name ?? null,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  /**
+   * Archive a task.
+   *
+   * The document stays in `tasks`; only the flag and its audit fields change.
+   * `archivedBy` is the signed-in user and `archivedAt` a server timestamp, both
+   * of which the rules require — an archived task without a timestamp could never
+   * be found by the retention sweep.
+   *
+   * The order value is left alone so a restore lands back where it was.
+   */
+  async archiveTask(id: string, archivedBy: string): Promise<void> {
+    if (!db) throw new Error('Firebase not configured');
+    await updateDoc(doc(db, 'tasks', id), {
+      archived: true,
+      archivedAt: serverTimestamp(),
+      archivedBy,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  /**
+   * Restore an archived task.
+   *
+   * The task returns to its original column. If that column has been deleted it
+   * falls back to the board's first column: an existing column, so a restore can
+   * never leave a task pointing at a column the board does not have. No new task
+   * and no new id are involved.
+   */
+  async restoreTask(id: string, columns: BoardColumn[]): Promise<void> {
+    if (!db) throw new Error('Firebase not configured');
+
+    const snapshot = await getDoc(doc(db, 'tasks', id));
+    if (!snapshot.exists()) throw new Error('Task not found');
+
+    const targetColumnId = restoreColumnId(
+      { columnId: String(snapshot.data().columnId ?? '') },
+      columns,
+    );
+    if (!targetColumnId) {
+      throw new Error('This board has no columns, so the task cannot be restored yet.');
+    }
+
+    await updateDoc(doc(db, 'tasks', id), {
+      archived: false,
+      archivedAt: null,
+      archivedBy: null,
+      // Only written when the column actually changed, so a normal restore does
+      // not masquerade as a move in the activity the board renders.
+      ...(targetColumnId === snapshot.data().columnId ? {} : { columnId: targetColumnId }),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  /**
+   * Delete a task and everything that hangs off it.
+   *
+   * Firestore rules cannot cascade, so this is the only correct way to remove a
+   * task: comments and attachment metadata are deleted explicitly before the
+   * task document itself, in batches so a long discussion cannot exceed the
+   * 500-write batch limit.
+   *
+   * Object deletion goes through the storage abstraction and is reported, not
+   * assumed. While no provider is configured every key comes back in
+   * `storage.pending` and `fullyDeleted` is `false`, so the caller can tell the
+   * user that files are still present instead of implying a clean sweep.
+   */
+  async deleteTaskCascade(id: string): Promise<TaskDeletionReport> {
+    if (!db) throw new Error('Firebase not configured');
+
+    // Read the object keys before the metadata that holds them is removed.
+    const attachments = await getDocs(collection(db, 'tasks', id, 'attachments'));
+    const attachmentKeys = attachments.docs
+      .map((attachment) => String(attachment.data().s3Key ?? ''))
+      .filter((key) => key.length > 0);
+
+    let commentsDeleted = 0;
+    const comments = await getDocs(collection(db, 'tasks', id, 'comments'));
+    for (let index = 0; index < comments.docs.length; index += FIRESTORE_BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      comments.docs
+        .slice(index, index + FIRESTORE_BATCH_LIMIT)
+        .forEach((comment) => batch.delete(comment.ref));
+      await batch.commit();
+      commentsDeleted += Math.min(FIRESTORE_BATCH_LIMIT, comments.docs.length - index);
+    }
+
+    let attachmentMetadataDeleted = 0;
+    for (let index = 0; index < attachments.docs.length; index += FIRESTORE_BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      attachments.docs
+        .slice(index, index + FIRESTORE_BATCH_LIMIT)
+        .forEach((attachment) => batch.delete(attachment.ref));
+      await batch.commit();
+      attachmentMetadataDeleted += Math.min(FIRESTORE_BATCH_LIMIT, attachments.docs.length - index);
+    }
+
+    // A storage failure must not stop the task document from being removed, or a
+    // refused object call would leave an undeletable task behind. The keys are
+    // still reported so the omission is visible.
+    const storage = await resolveAttachmentStorage()
+      .deleteAttachments(attachmentKeys)
+      .catch((error) => {
+        console.error('Object deletion did not complete:', error);
+        return {
+          deleted: [],
+          pending: attachmentKeys,
+          reason: 'The storage service could not be reached.',
+        };
+      });
+
     await deleteDoc(doc(db, 'tasks', id));
+
+    return {
+      taskId: id,
+      commentsDeleted,
+      attachmentMetadataDeleted,
+      storage,
+      fullyDeleted: storage.pending.length === 0,
+    };
   },
 
   async moveTask(taskId: string, newColumnId: string): Promise<void> {
@@ -833,7 +982,40 @@ function toTask(snapshot: { id: string; data: () => Record<string, unknown> }): 
     updatedAt: toDate(data.updatedAt),
     dueDate: data.dueDate ? toDate(data.dueDate) : null,
     tags: Array.isArray(data.tags) ? (data.tags as string[]) : [],
+    // `assigneeIds` is absent on every task created before multi-assignee
+    // support. Backfilling it from the legacy single-assignee fields means the
+    // rest of the app can read one shape, while the document itself keeps
+    // working exactly as it did.
+    assigneeIds: toStringArray(data.assigneeIds, data.assigneeId),
+    assigneeNames: toStringArray(data.assigneeNames, data.assigneeName),
+    // Archived documents written before the field existed must read as active,
+    // so this is an explicit comparison rather than a cast.
+    archived: data.archived === true,
+    archivedAt: data.archivedAt ? toDate(data.archivedAt) : null,
+    archivedBy: (data.archivedBy as string | null) ?? null,
   };
+}
+
+/** A string field that may legitimately be absent, `null` or a list. */
+function toStringArray(value: unknown, legacyFallback?: unknown): string[] {
+  if (Array.isArray(value)) return value.map((entry) => String(entry));
+  if (typeof legacyFallback === 'string' && legacyFallback.length > 0) return [legacyFallback];
+  return [];
+}
+
+/**
+ * Collapse an assignee selection to unique ids, keeping the order they were
+ * picked in and the first name seen for each person.
+ *
+ * Order matters because the first entry becomes the task's primary assignee.
+ */
+function dedupeAssignees(members: { uid: string; name: string }[]): { uid: string; name: string }[] {
+  const seen = new Map<string, string>();
+  members.forEach((member) => {
+    if (!member.uid || seen.has(member.uid)) return;
+    seen.set(member.uid, member.name || 'Unknown user');
+  });
+  return [...seen].map(([uid, name]) => ({ uid, name }));
 }
 
 function toDate(value: unknown): Date {

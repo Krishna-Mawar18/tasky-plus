@@ -4,22 +4,24 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { WorkspaceRoleProvider, useWorkspaceRole } from '@/contexts/WorkspaceRoleContext';
-import { boardService, taskService } from '@/lib/services';
-import { Board, Task, TaskOrderUpdate } from '@/types';
+import { boardService, memberService, taskService } from '@/lib/services';
+import { Board, Task, TaskOrderUpdate, WorkspaceMember } from '@/types';
 import { DEFAULT_COLUMNS, statusForColumn, neighbourColumnId, tasksInColumn } from '@/lib/taskOrder';
 import { isWorkspaceReadOnly } from '@/lib/permissions';
+import { activeTasks, archivedTasks } from '@/lib/taskArchive';
 import { KanbanBoard } from '@/components/KanbanBoard';
-import { 
+import { ArchivedTasksPanel } from '@/components/ArchivedTasksPanel';
+import { TaskDetailModal, type TaskEditFormValues } from '@/components/task/TaskDetailModal';
+import { ConfirmDialog } from '@/components/task/ConfirmDialog';
+import {
   ArrowLeft,
   Plus,
   Calendar,
   Clock,
   Edit,
-  Trash2,
   Circle,
   AlertCircle,
-  Eye,
-  X
+  Eye
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import EditBoardModal from '../../../../../components/EditBoardModal';
@@ -59,7 +61,7 @@ function BoardContent() {
   const { user } = useAuth();
   const workspaceId = params.workspaceId as string;
   const boardId = params.boardId as string;
-  const { loading: roleLoading, can, role } = useWorkspaceRole();
+  const { loading: roleLoading, can, role, isMember } = useWorkspaceRole();
   // One gate for every board and task write, so the same rule that hides a
   // control also blocks the write behind it. True while the role is unresolved,
   // which is what stops a viewer's page from flashing owner controls.
@@ -79,10 +81,13 @@ function BoardContent() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [showEditTaskModal, setShowEditTaskModal] = useState(false);
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  /** The task whose detail modal is open. `null` when the modal is closed. */
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  /** The task awaiting permanent-delete confirmation. */
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
+  const [restoringTaskId, setRestoringTaskId] = useState<string | null>(null);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
 
   /**
    * Sequence number of the most recent move touching each task. A rollback is
@@ -102,6 +107,27 @@ function BoardContent() {
   const columns = useMemo(
     () => (board?.columns?.length ? board.columns : DEFAULT_COLUMNS),
     [board],
+  );
+
+  /**
+   * The board renders active tasks; archived ones live in the panel below.
+   *
+   * Derived rather than stored separately so both views can never disagree: there
+   * is one `tasks` array and one place that decides which list a task belongs in.
+   */
+  const visibleTasks = useMemo(() => activeTasks(tasks), [tasks]);
+  const archived = useMemo(() => archivedTasks(tasks), [tasks]);
+
+  /**
+   * The task the modal is showing.
+   *
+   * Read from `tasks` by id rather than snapshotted, so an edit made inside the
+   * modal is reflected immediately without a second copy of the task to keep in
+   * sync. Closing is just `openTaskId = null`.
+   */
+  const openTask = useMemo(
+    () => (openTaskId ? tasks.find((task) => task.id === openTaskId) ?? null : null),
+    [openTaskId, tasks],
   );
 
   const priorityColors = {
@@ -143,6 +169,25 @@ function BoardContent() {
 
     loadBoardData();
   }, [user, boardId]);
+
+  /**
+   * Workspace members, for the assignee picker.
+   *
+   * Only assignable people come from this list, so a task can never be assigned
+   * to somebody outside the workspace. Subscribed rather than fetched so a
+   * person added later can be assigned without reloading the board.
+   */
+  useEffect(() => {
+    if (roleLoading || !isMember) return;
+
+    const unsubscribe = memberService.subscribeToMembers(
+      workspaceId,
+      setMembers,
+      (error) => console.error('Could not load workspace members:', error),
+    );
+
+    return unsubscribe;
+  }, [workspaceId, roleLoading, isMember]);
 
   const handleCreateTask = async (columnId: string) => {
     if (readOnly || !user || !board || !newTask.title.trim()) return;
@@ -287,92 +332,226 @@ function BoardContent() {
     }
   };
 
-  const handleEditTask = (task: Task) => {
-    setEditingTask(task);
-    setNewTask({
-      title: task.title,
-      description: task.description || '',
-      priority: task.priority,
-      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''
-    });
-    setShowEditTaskModal(true);
+  /** Open the detail modal on a card click. Allowed even for viewers. */
+  const handleOpenTask = (task: Task) => {
+    setOpenTaskId(task.id);
   };
 
-  const handleUpdateTask = async () => {
-    if (readOnly || !editingTask || !newTask.title.trim()) return;
+  /**
+   * Persist an edit made inside the modal.
+   *
+   * Kept optimistic, matching how the board has always treated a task write: the
+   * card updates immediately and is restored if Firestore rejects the change. The
+   * modal only leaves edit mode once the write resolves, so a failed save leaves
+   * the reader looking at their unsaved text instead of a silently discarded edit.
+   */
+  const handleSaveTask = async (taskId: string, values: TaskEditFormValues) => {
+    if (readOnly) throw new Error('Your role cannot edit tasks.');
 
     const taskData = {
-      title: newTask.title.trim(),
-      description: newTask.description.trim(),
-      priority: newTask.priority,
-      dueDate: newTask.dueDate ? new Date(newTask.dueDate) : null,
+      title: values.title.trim(),
+      description: values.description.trim(),
+      priority: values.priority,
+      dueDate: values.dueDate ? new Date(values.dueDate) : null,
     };
 
-    // Store original task for rollback
-    const originalTask = { ...editingTask };
+    const previous = tasks.find((task) => task.id === taskId);
+    if (!previous) throw new Error('That task is no longer on this board.');
 
-    // Optimistic update - update UI immediately
-    setTasks(prev => prev.map(task => 
-      task.id === editingTask.id 
-        ? { ...task, ...taskData }
-        : task
-    ));
-
-    // Reset form and close modal immediately
-    setNewTask({ title: '', description: '', priority: 'medium', dueDate: '' });
-    setEditingTask(null);
-    setShowEditTaskModal(false);
+    setTasks((current) =>
+      current.map((task) => (task.id === taskId ? { ...task, ...taskData } : task)),
+    );
 
     try {
-      // Update database in background
-      await taskService.updateTask(editingTask.id, taskData);
+      await taskService.updateTask(taskId, taskData);
     } catch (error) {
       console.error('Error updating task:', error);
-      // Rollback on error
-      setTasks(prev => prev.map(task => 
-        task.id === originalTask.id 
-          ? originalTask
-          : task
-      ));
-      toast.error('Failed to update task. Please try again.');
+      setTasks((current) =>
+        current.map((task) => (task.id === taskId ? previous : task)),
+      );
+      throw error;
     }
   };
 
-  const handleDeleteTask = (taskId: string) => {
+  /**
+   * Change assignees from inside the modal.
+   *
+   * The optimistic update mirrors the first assignee into the legacy single
+   * fields so the card, the stats service and the assignment notifications keep
+   * working unchanged; `setAssignees` writes the same pairing server-side.
+   */
+  const handleSaveAssignees = async (taskId: string, uids: string[]) => {
+    if (readOnly) throw new Error('Your role cannot assign tasks.');
+
+    const previous = tasks.find((task) => task.id === taskId);
+    if (!previous) throw new Error('That task is no longer on this board.');
+
+    // Resolve names from the member list once, and pass the same pairing to the
+    // optimistic update and to the write, so the two cannot disagree.
+    const resolved = uids.map((uid) => {
+      const member = members.find((candidate) => candidate.uid === uid);
+      return { uid, name: member?.displayName || member?.email || 'Unknown user' };
+    });
+
+    const optimistic = {
+      assigneeIds: resolved.map((entry) => entry.uid),
+      assigneeNames: resolved.map((entry) => entry.name),
+      assigneeId: resolved[0]?.uid,
+      assigneeName: resolved[0]?.name,
+    };
+
+    setTasks((current) =>
+      current.map((task) => (task.id === taskId ? { ...task, ...optimistic } : task)),
+    );
+
+    try {
+      await taskService.setAssignees(taskId, resolved);
+    } catch (error) {
+      console.error('Error updating assignees:', error);
+      setTasks((current) =>
+        current.map((task) => (task.id === taskId ? previous : task)),
+      );
+      throw error;
+    }
+  };
+
+  /**
+   * Hide a task without deleting it.
+   *
+   * An archive is reversible, so it is the action offered first and the archive
+   * timestamp is written immediately. `archivedBy` is the current user, which is
+   * what makes "archived 3 days ago by someone" answerable later.
+   */
+  const handleArchiveTask = async (task: Task) => {
+    if (readOnly || !user) return;
+
+    const archivedAt = new Date();
+    const previous = tasks.find((candidate) => candidate.id === task.id);
+
+    setTasks((current) =>
+      current.map((candidate) =>
+        candidate.id === task.id
+          ? { ...candidate, archived: true, archivedAt, archivedBy: user.uid }
+          : candidate,
+      ),
+    );
+    setOpenTaskId(null);
+
+    try {
+      await taskService.archiveTask(task.id, user.uid);
+      toast.success('Task archived.');
+    } catch (error) {
+      console.error('Error archiving task:', error);
+      if (previous) {
+        setTasks((current) =>
+          current.map((candidate) => (candidate.id === task.id ? previous : candidate)),
+        );
+      }
+      toast.error('Failed to archive task. Please try again.');
+    }
+  };
+
+  /**
+   * Put an archived task back on the board.
+   *
+   * The column is resolved here for the optimistic update and passed to the
+   * service as the full column list, so the service applies the same
+   * "original column, else the first one" rule and the card never lands somewhere
+   * the write did not put it.
+   */
+  const handleRestoreTask = async (task: Task) => {
+    if (readOnly || !user) return;
+
+    const targetColumnId =
+      columns.find((column) => column.id === task.columnId)?.id ?? columns[0]?.id;
+    if (!targetColumnId) {
+      toast.error('This board has no columns to restore into.');
+      return;
+    }
+
+    const previous = tasks.find((candidate) => candidate.id === task.id);
+    const restored = { archived: false, archivedAt: null, archivedBy: null };
+
+    setRestoringTaskId(task.id);
+    setTasks((current) =>
+      current.map((candidate) =>
+        candidate.id === task.id
+          ? { ...candidate, ...restored, columnId: targetColumnId }
+          : candidate,
+      ),
+    );
+
+    try {
+      await taskService.restoreTask(task.id, columns);
+      setRestoringTaskId(null);
+      toast.success('Task restored.');
+    } catch (error) {
+      console.error('Error restoring task:', error);
+      if (previous) {
+        setTasks((current) =>
+          current.map((candidate) => (candidate.id === task.id ? previous : candidate)),
+        );
+      }
+      setRestoringTaskId(null);
+      toast.error('Failed to restore task. Please try again.');
+    }
+  };
+
+  /**
+   * Ask before deleting.
+   *
+   * Every path into permanent deletion goes through here — the modal's Delete
+   * button and the archived panel — so the warning cannot be skipped. Takes the
+   * task itself rather than an id because the archived panel already holds one.
+   */
+  const handleDeleteTask = (task: Task) => {
     if (readOnly) return;
-    const task = tasks.find(t => t.id === taskId);
-    if (task) {
-      setTaskToDelete(task);
-      setShowDeleteConfirmModal(true);
-    }
+    setTaskToDelete(task);
   };
 
+  /**
+   * Permanent deletion, including the task's comments and attachment metadata.
+   *
+   * Optimistic removal with rollback, as before. `deleteTaskCascade` removes the
+   * collaboration subcollections as well; if a subcollection delete fails the
+   * task itself is left alone rather than half-deleted, so the rollback below has
+   * something to put back.
+   */
   const confirmDeleteTask = async () => {
     if (readOnly || !taskToDelete) return;
 
-    // Store task for potential rollback
     const deletedTask = { ...taskToDelete };
 
-    // Optimistic update - remove from UI immediately
-    setTasks(prev => prev.filter(task => task.id !== taskToDelete.id));
-    
-    // Close modal and reset state immediately
-    setShowDeleteConfirmModal(false);
+    setDeletingTask(true);
+    setTasks((prev) => prev.filter((task) => task.id !== deletedTask.id));
+    setOpenTaskId((current) => (current === deletedTask.id ? null : current));
     setTaskToDelete(null);
 
     try {
-      // Delete from database in background
-      await taskService.deleteTask(deletedTask.id);
+      const report = await taskService.deleteTaskCascade(deletedTask.id);
+      setDeletingTask(false);
+
+      // Surfaces any object the storage layer could not remove. With no storage
+      // configured `pending` is empty, but Phase 2 needs this to stay visible so a
+      // partial delete is never reported as a clean one.
+      if (report.storage.pending.length > 0) {
+        toast.error(
+          `Task deleted, but ${report.storage.pending.length} file(s) need manual cleanup: ${report.storage.pending.join(', ')}`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success('Task permanently deleted.');
+      }
     } catch (error) {
       console.error('Error deleting task:', error);
-      // Rollback on error - add task back
-      setTasks(prev => [...prev, deletedTask]);
+      setTasks((prev) => [...prev, deletedTask]);
+      setDeletingTask(false);
       toast.error('Failed to delete task. Please try again.');
     }
   };
 
   const cancelDeleteTask = () => {
-    setShowDeleteConfirmModal(false);
+    if (deletingTask) return;
     setTaskToDelete(null);
   };
 
@@ -594,7 +773,7 @@ function BoardContent() {
       <div className="p-6 relative z-[50]">
         <KanbanBoard
           columns={columns}
-          tasks={tasks}
+          tasks={visibleTasks}
           onTasksMove={handleTasksMove}
           avatar={<UserAvatar />}
           readOnly={readOnly}
@@ -602,10 +781,17 @@ function BoardContent() {
           onToggleCreate={(columnId) =>
             setShowCreateTask((current) => (current === columnId ? null : columnId))
           }
-          onTaskEdit={handleEditTask}
-          onTaskDelete={handleDeleteTask}
           onTaskStep={handleTaskStep}
+          onTaskOpen={handleOpenTask}
           renderCreateForm={renderCreateForm}
+        />
+
+        <ArchivedTasksPanel
+          tasks={archived}
+          role={role}
+          restoringId={restoringTaskId}
+          onRestore={(task) => void handleRestoreTask(task)}
+          onRequestDelete={handleDeleteTask}
         />
       </div>
 
@@ -619,204 +805,72 @@ function BoardContent() {
         onSubmit={handleEditBoard}
       />
 
-      {/* Edit Task Modal */}
-      {showEditTaskModal && editingTask && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => {
-              setShowEditTaskModal(false);
-              setEditingTask(null);
-              setNewTask({ title: '', description: '', priority: 'medium', dueDate: '' });
-            }}
-          />
-          
-          {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md animate-fadeIn">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
-                  <Edit className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold font-mono">Edit Task</h2>
-                  <p className="text-sm text-gray-600 font-mono">Update task details</p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowEditTaskModal(false);
-                  setEditingTask(null);
-                  setNewTask({ title: '', description: '', priority: 'medium', dueDate: '' });
-                }}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/*
+        One modal for reading and editing a task. It replaced the separate
+        edit-only dialog: everything now lands here, a card click in read mode
+        and the modal's own Edit button in edit mode.
+      */}
+      <TaskDetailModal
+        task={openTask}
+        columns={columns}
+        members={members}
+        role={role}
+        currentUserId={user?.uid ?? null}
+        currentUserName={user?.displayName || 'Unknown user'}
+        currentUserPhotoURL={user?.photoURL ?? null}
+        canEdit={!readOnly}
+        onClose={() => setOpenTaskId(null)}
+        onSave={handleSaveTask}
+        onSaveAssignees={handleSaveAssignees}
+        onArchive={(task) => void handleArchiveTask(task)}
+        onRestore={(task) => void handleRestoreTask(task)}
+        onRequestDelete={handleDeleteTask}
+      />
 
-            {/* Form */}
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-mono font-bold text-gray-700 mb-2">
-                  Task Title
-                </label>
-                <input
-                  type="text"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  placeholder="Enter task title"
-                />
-              </div>
+      {/*
+        Permanent deletion, shared by the modal's Delete button and the archived
+        panel. `taskToDelete` is set by both, so there is one confirmation and one
+        code path to the cascade delete.
+      */}
+      <ConfirmDialog
+        isOpen={taskToDelete !== null}
+        title={taskToDelete?.archived ? 'Delete archived task permanently?' : 'Delete task permanently?'}
+        subtitle="This action cannot be undone"
+        tone="danger"
+        confirmLabel="Delete permanently"
+        busyLabel="Deleting..."
+        busy={deletingTask}
+        onCancel={cancelDeleteTask}
+        onConfirm={() => void confirmDeleteTask()}
+      >
+        <p className="text-sm font-mono text-gray-700 mb-3">
+          &quot;{taskToDelete?.title}&quot; will be deleted along with its comments and
+          attachment records. This cannot be undone.
+        </p>
 
-              <div>
-                <label className="block text-sm font-mono font-bold text-gray-700 mb-2">
-                  Description (Optional)
-                </label>
-                <textarea
-                  value={newTask.description}
-                  onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  placeholder="Enter task description"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-mono font-bold text-gray-700 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    value={newTask.priority}
-                    onChange={(e) => setNewTask(prev => ({ ...prev, priority: e.target.value as 'low' | 'medium' | 'high' }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black-200 font-mono text-sm"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-mono font-bold text-black mb-2">
-                    Due Date
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={newTask.dueDate || ''}
-                      onChange={(e) => setNewTask(prev => ({ ...prev, dueDate: e.target.value }))}
-                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white cursor-pointer focus:bg-blue-50/30"
-                    />
-                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-black pointer-events-none" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-3 pt-4">
-                <button
-                  onClick={handleUpdateTask}
-                  disabled={!newTask.title.trim()}
-                  className="flex-1 bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center space-x-2"
-                >
-                  <Edit className="w-4 h-4" />
-                  <span>Update Task</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setShowEditTaskModal(false);
-                    setEditingTask(null);
-                    setNewTask({ title: '', description: '', priority: 'medium', dueDate: '' });
-                  }}
-                  className="flex-1 bg-white text-black px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-red-200 hover:text-red-500 hover:border-red-500 border-2 border-gray-300 transition-all duration-200"
-                >
-                  Cancel
-                </button>
-              </div>
+        {taskToDelete && (
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div className="flex items-center space-x-2">
+              <span className={`inline-flex items-center px-2 py-1 rounded-full font-mono text-xs ${priorityColors[taskToDelete.priority]}`}>
+                {priorityIcons[taskToDelete.priority]}
+                <span className="ml-1 capitalize">{taskToDelete.priority}</span>
+              </span>
+              {taskToDelete.archived && (
+                <span className="text-xs font-mono text-gray-500">
+                  Archived {taskToDelete.archivedAt ? new Date(taskToDelete.archivedAt).toLocaleDateString() : ''}
+                </span>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirmModal && taskToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md bg-black/20">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0"
-            onClick={cancelDeleteTask}
-          />
-          
-          {/* Modal */}
-          <div className="relative bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-md animate-fadeIn border border-white/20">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center">
-                  <Trash2 className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold font-mono text-gray-900">Delete Task</h2>
-                  <p className="text-sm text-gray-600 font-mono">This action cannot be undone</p>
-                </div>
-              </div>
-              <button
-                onClick={cancelDeleteTask}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              <div className="mb-6">
-                <p className="text-gray-700 font-mono mb-4">
-                  Are you sure you want to delete this task?
-                </p>
-                
-                {/* Task Preview */}
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <h3 className="font-mono font-bold text-gray-900 mb-2">
-                    &quot;{taskToDelete.title}&quot;
-                  </h3>
-                  {taskToDelete.description && (
-                    <p className="text-sm text-gray-600 font-mono mb-2">
-                      {taskToDelete.description}
-                    </p>
-                  )}
-                  <div className="flex items-center space-x-2">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full font-mono text-xs ${priorityColors[taskToDelete.priority]}`}>
-                      {priorityIcons[taskToDelete.priority]}
-                      <span className="ml-1 capitalize">{taskToDelete.priority}</span>
-                    </span>
-                    {taskToDelete.dueDate && (
-                      <span className="text-xs text-gray-500 font-mono">
-                        Due: {new Date(taskToDelete.dueDate).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-center space-x-3">
-                <button
-                  onClick={confirmDeleteTask}
-                  className="bg-red-500 text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-red-200 hover:text-red-500 hover:border-red-500 border-2 border-red-500 transition-all duration-200 flex items-center space-x-2"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Delete Task</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        {taskToDelete?.archived && (
+          <p className="mt-3 text-xs font-mono text-gray-500">
+            This task is archived, so it would have been deleted automatically after 90 days
+            anyway. Deleting it now does that immediately.
+          </p>
+        )}
+      </ConfirmDialog>
 
       {/* Animations */}
       <style jsx global>{`

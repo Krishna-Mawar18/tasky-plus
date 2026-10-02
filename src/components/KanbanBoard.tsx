@@ -21,6 +21,11 @@ import { resolveTaskPlacement, tasksInColumn } from '@/lib/taskOrder';
 
 export interface KanbanBoardProps {
   columns: BoardColumn[];
+  /**
+   * Active tasks only. The page filters archived tasks out before they reach the
+   * board, so drag-and-drop and the column counts never see a task that belongs
+   * under Archived.
+   */
   tasks: Task[];
   /**
    * Apply a completed drag. The board stays stateless: the owner applies the
@@ -30,9 +35,13 @@ export interface KanbanBoardProps {
   avatar: React.ReactNode;
   createTaskColumnId: string | null;
   onToggleCreate: (columnId: string) => void;
-  onTaskEdit: (task: Task) => void;
-  onTaskDelete: (taskId: string) => void;
   onTaskStep: (taskId: string, direction: -1 | 1) => void;
+  /**
+   * Opens the task detail modal. Passed through to every card, including in
+   * read-only mode: reading a task is allowed for viewers. Editing and deleting
+   * live inside the modal, so the card carries no edit/delete controls.
+   */
+  onTaskOpen?: (task: Task) => void;
   renderCreateForm: (columnId: string) => React.ReactNode;
   /**
    * Viewer mode. Disables every sensor and the drop targets, and hides the
@@ -48,9 +57,8 @@ export function KanbanBoard({
   avatar,
   createTaskColumnId,
   onToggleCreate,
-  onTaskEdit,
-  onTaskDelete,
   onTaskStep,
+  onTaskOpen,
   renderCreateForm,
   readOnly = false,
 }: KanbanBoardProps) {
@@ -165,9 +173,9 @@ export function KanbanBoard({
             readOnly={readOnly}
             isCreateOpen={!readOnly && createTaskColumnId === column.id}
             onToggleCreate={readOnly ? undefined : onToggleCreate}
-            onEdit={readOnly ? undefined : onTaskEdit}
-            onDelete={readOnly ? undefined : onTaskDelete}
             onStep={readOnly ? undefined : onTaskStep}
+            // Not gated on `readOnly`: opening the task is a read.
+            onOpen={onTaskOpen}
             canStepBack={
               !readOnly &&
               orderedColumns.findIndex((candidate) => candidate.id === column.id) > 0

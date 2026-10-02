@@ -6,9 +6,10 @@
         "dev": "next dev",
         "build": "next build",
         "start": "next start",
-        "lint": "next lint",
-        "typecheck": "tsc --noEmit"
-    },
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-tasky-rules \"mocha tests/firestore.rules.test.js --timeout 20000 --exit\""
+  },
     "dependencies": {
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/sortable": "^10.0.0",
@@ -19,16 +20,20 @@
         "next": "15.4.5",
         "react": "19.1.0",
         "react-dom": "19.1.0",
-        "react-hot-toast": "^2.4.1"
+        "react-hot-toast": "^2.4.1",
+        "react-markdown": "^10.1.0",
+        "remark-gfm": "^4.0.1"
     },
     "devDependencies": {
         "@eslint/eslintrc": "^3",
+        "@firebase/rules-unit-testing": "^5.0.2",
         "@tailwindcss/postcss": "^4",
         "@types/node": "^20",
         "@types/react": "^19",
         "@types/react-dom": "^19",
         "eslint": "^9",
         "eslint-config-next": "15.4.5",
+        "mocha": "^12.0.3",
         "tailwindcss": "^4.1.11",
         "typescript": "^5"
     }
