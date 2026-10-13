@@ -195,6 +195,33 @@ export interface TaskAttachment {
 }
 
 /**
+ * An external link attached to a task, at `tasks/{taskId}/links/{linkId}`.
+ *
+ * A subcollection rather than an array on the task document, for the same
+ * reason comments and attachments are: a task with many references would
+ * otherwise grow past Firestore's document size limit, and the list is read on
+ * its own.
+ *
+ * Unlike a file attachment, a link is editable. The URL points at something
+ * Tasky does not own, so the creator may correct a title or an address without
+ * deleting and re-adding the row. `createdBy` and `createdAt` stay pinned.
+ */
+export interface TaskLink {
+  id: string;
+  /** Creator's uid. Immutable; the rules bind it to `request.auth.uid`. */
+  createdBy: string;
+  /** Denormalized at creation so a row renders without a cross-user read. */
+  createdByName: string;
+  title: string;
+  /** Normalized absolute `http(s)` URL. */
+  url: string;
+  /** Hostname derived from `url`, stored for the shortened display. */
+  hostname: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
+/**
  * Outcome of one object-store deletion attempt.
  *
  * Split into `deleted` and `pending` on purpose. A report that only had a
@@ -233,6 +260,7 @@ export interface TaskDeletionReport {
   taskId: string;
   commentsDeleted: number;
   attachmentMetadataDeleted: number;
+  linksDeleted: number;
   storage: StorageDeletionReport;
   /** True only when nothing is left behind, including objects. */
   fullyDeleted: boolean;

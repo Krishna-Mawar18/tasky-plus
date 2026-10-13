@@ -91,6 +91,19 @@ function attachmentData(attachmentId, overrides = {}) {
   };
 }
 
+function linkData(overrides = {}) {
+  return {
+    createdBy: MANAGER,
+    createdByName: 'Manager',
+    title: 'Design spec',
+    url: 'https://example.com/design',
+    hostname: 'example.com',
+    createdAt: new Date('2026-01-04T00:00:00Z'),
+    updatedAt: new Date('2026-01-04T00:00:00Z'),
+    ...overrides,
+  };
+}
+
 before(async () => {
   testEnv = await initializeTestEnvironment({
     projectId: 'demo-tasky-rules',
@@ -594,6 +607,141 @@ describe('attachments', () => {
       .set(attachmentData('a1'));
 
     await assertSucceeds(authed(OWNER).doc(`tasks/task1/attachments/a1`).delete());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Links — metadata-only references held on a task
+// ---------------------------------------------------------------------------
+
+describe('task links', () => {
+  it('lets a manager add a link', async () => {
+    await assertSucceeds(authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData()));
+  });
+
+  it('refuses an outsider adding a link', async () => {
+    await assertFails(authed(OUTSIDER).doc(`tasks/task1/links/l1`).set(linkData()));
+  });
+
+  it('refuses a viewer adding a link', async () => {
+    await assertFails(
+      authed(VIEWER).doc(`tasks/task1/links/l1`).set(linkData({ createdBy: VIEWER })),
+    );
+  });
+
+  it('refuses a manager spoofing createdBy', async () => {
+    await assertFails(
+      authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData({ createdBy: OUTSIDER })),
+    );
+  });
+
+  it('refuses a javascript: URL', async () => {
+    await assertFails(
+      authed(MANAGER)
+        .doc(`tasks/task1/links/l1`)
+        .set(linkData({ url: 'javascript:alert(1)', hostname: 'alert(1)' })),
+    );
+  });
+
+  it('refuses a data: URL', async () => {
+    await assertFails(
+      authed(MANAGER)
+        .doc(`tasks/task1/links/l1`)
+        .set(linkData({ url: 'data:text/html;base64,AAAA', hostname: 'text' })),
+    );
+  });
+
+  it('refuses an empty title', async () => {
+    await assertFails(authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData({ title: '' })));
+  });
+
+  it('refuses a title over 200 characters', async () => {
+    await assertFails(
+      authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData({ title: 'a'.repeat(201) })),
+    );
+  });
+
+  it('refuses a URL over 2048 characters', async () => {
+    await assertFails(
+      authed(MANAGER)
+        .doc(`tasks/task1/links/l1`)
+        .set(linkData({ url: `https://e.co/${'a'.repeat(2100)}` })),
+    );
+  });
+
+  it('refuses an extra field', async () => {
+    await assertFails(
+      authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData({ payload: 'x' })),
+    );
+  });
+
+  it('lets a viewer list links', async () => {
+    await assertSucceeds(authed(VIEWER).collection(`tasks/task1/links`).get());
+  });
+
+  it('refuses an outsider listing links', async () => {
+    await assertFails(authed(OUTSIDER).collection(`tasks/task1/links`).get());
+  });
+
+  it('lets a creator edit their own link', async () => {
+    await authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData());
+
+    await assertSucceeds(
+      authed(MANAGER).doc(`tasks/task1/links/l1`).update({
+        title: 'Updated spec',
+        url: 'https://example.com/updated',
+        hostname: 'example.com',
+        updatedAt: new Date('2026-01-05T00:00:00Z'),
+      }),
+    );
+  });
+
+  it('refuses another manager editing someone else’s link', async () => {
+    await authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData());
+
+    await assertFails(
+      authed(MANAGER2)
+        .doc(`tasks/task1/links/l1`)
+        .update({ title: 'Hijacked', updatedAt: new Date('2026-01-05T00:00:00Z') }),
+    );
+  });
+
+  it('refuses an edit that reassigns createdBy', async () => {
+    await authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData());
+
+    await assertFails(
+      authed(MANAGER)
+        .doc(`tasks/task1/links/l1`)
+        .update({ createdBy: OUTSIDER, updatedAt: new Date('2026-01-05T00:00:00Z') }),
+    );
+  });
+
+  it('refuses an edit that changes createdAt', async () => {
+    await authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData());
+
+    await assertFails(
+      authed(MANAGER)
+        .doc(`tasks/task1/links/l1`)
+        .update({ createdAt: new Date('2020-01-01T00:00:00Z') }),
+    );
+  });
+
+  it('lets a creator delete their own link', async () => {
+    await authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData());
+
+    await assertSucceeds(authed(MANAGER).doc(`tasks/task1/links/l1`).delete());
+  });
+
+  it('refuses another manager deleting someone else’s link', async () => {
+    await authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData());
+
+    await assertFails(authed(MANAGER2).doc(`tasks/task1/links/l1`).delete());
+  });
+
+  it('lets an owner delete anybody’s link', async () => {
+    await authed(MANAGER).doc(`tasks/task1/links/l1`).set(linkData());
+
+    await assertSucceeds(authed(OWNER).doc(`tasks/task1/links/l1`).delete());
   });
 });
 

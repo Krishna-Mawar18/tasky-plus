@@ -544,6 +544,63 @@ service cloud.firestore {
         allow delete: if isManagerOrAbove(taskWorkspaceId(taskAt(taskId)))
           && (resource.data.uploadedBy == request.auth.uid || isWorkspaceOwner(taskWorkspaceId(taskAt(taskId))));
       }
+
+      // -------------------------------------------------------------------
+      // Links
+      //
+      // `tasks/{taskId}/links/{linkId}`. External references a task points at.
+      // Metadata only — there is no file and no object store involved.
+      //
+      // Reading is open to any workspace member. Adding is manager-or-above,
+      // matching attachment upload because a link is a task write rather than a
+      // discussion entry. A link is the one editable attachment: its creator may
+      // correct the title or address, and the creator or the workspace owner may
+      // remove it. `createdBy` and `createdAt` are pinned so an edit can never
+      // rewrite who added the link or when.
+      //
+      // The scheme is checked here as well as in `linkValidation.ts`, so a
+      // crafted client cannot store a `javascript:` or `data:` target that some
+      // future reader might trust.
+      // -------------------------------------------------------------------
+      match /links/{linkId} {
+        allow get, list: if canViewWorkspace(taskWorkspaceId(taskAt(taskId)));
+
+        allow create: if isManagerOrAbove(taskWorkspaceId(taskAt(taskId)))
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.url is string
+          && request.resource.data.url.size() <= 2048
+          && request.resource.data.url.matches('^https?://.+$')
+          && request.resource.data.hostname is string
+          && request.resource.data.hostname.size() > 0
+          // Exactly the fields `linkService.addLink` writes. No free-form field
+          // may be added.
+          && request.resource.data.keys().hasOnly([
+            'createdBy', 'createdByName', 'title', 'url', 'hostname', 'createdAt', 'updatedAt'
+          ]);
+
+        // Only the creator may edit, and only while they still hold a role that
+        // allows it. The immutable fields are pinned and nothing but the editable
+        // ones may change.
+        allow update: if isManagerOrAbove(taskWorkspaceId(taskAt(taskId)))
+          && resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.url is string
+          && request.resource.data.url.size() <= 2048
+          && request.resource.data.url.matches('^https?://.+$')
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['title', 'url', 'hostname', 'updatedAt']);
+
+        // Your own link, or any if you own the workspace.
+        allow delete: if isManagerOrAbove(taskWorkspaceId(taskAt(taskId)))
+          && (resource.data.createdBy == request.auth.uid || isWorkspaceOwner(taskWorkspaceId(taskAt(taskId))));
+      }
     }
 
     // ---------------------------------------------------------------------

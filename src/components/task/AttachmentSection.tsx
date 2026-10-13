@@ -10,6 +10,7 @@ import { useTaskAttachments } from '@/hooks/useTaskAttachments';
 import { formatAllowedExtensions, MAX_ATTACHMENT_BYTES, formatBytes } from '@/lib/fileValidation';
 import { AttachmentDropzone } from './AttachmentDropzone';
 import { AttachmentRow } from './AttachmentRow';
+import { LinkList } from './LinkList';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface AttachmentSectionProps {
@@ -18,6 +19,7 @@ interface AttachmentSectionProps {
   boardId: string;
   role: WorkspaceRole | null;
   currentUserId: string | null;
+  currentUserName: string;
 }
 
 /**
@@ -37,6 +39,7 @@ export function AttachmentSection({
   boardId,
   role,
   currentUserId,
+  currentUserName,
 }: AttachmentSectionProps) {
   const { attachments, loading, uploading, deletingId, error, storageAvailable, upload, remove } =
     useTaskAttachments(taskId);
@@ -173,6 +176,20 @@ export function AttachmentSection({
           Uploads are disabled until file storage is connected.
         </p>
       )}
+
+      {/*
+        Links live in the same section as files but are a separate concern:
+        nothing is uploaded, so they are available whatever the storage status.
+        The divider keeps the two kinds of attachment visually distinct.
+      */}
+      <div className="border-t border-gray-200 pt-3">
+        <LinkList
+          taskId={taskId}
+          role={role}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+        />
+      </div>
 
       <ConfirmDialog
         isOpen={pendingDelete !== null}

@@ -790,8 +790,8 @@ function BoardContent() {
           tasks={archived}
           role={role}
           restoringId={restoringTaskId}
-          onRestore={(task) => void handleRestoreTask(task)}
-          onRequestDelete={handleDeleteTask}
+          onRestoreAction={(task) => void handleRestoreTask(task)}
+          onRequestDeleteAction={handleDeleteTask}
         />
       </div>
 
@@ -819,12 +819,12 @@ function BoardContent() {
         currentUserName={user?.displayName || 'Unknown user'}
         currentUserPhotoURL={user?.photoURL ?? null}
         canEdit={!readOnly}
-        onClose={() => setOpenTaskId(null)}
-        onSave={handleSaveTask}
-        onSaveAssignees={handleSaveAssignees}
-        onArchive={(task) => void handleArchiveTask(task)}
-        onRestore={(task) => void handleRestoreTask(task)}
-        onRequestDelete={handleDeleteTask}
+        onCloseAction={() => setOpenTaskId(null)}
+        onSaveAction={handleSaveTask}
+        onSaveAssigneesAction={handleSaveAssignees}
+        onArchiveAction={(task) => void handleArchiveTask(task)}
+        onRestoreAction={(task) => void handleRestoreTask(task)}
+        onRequestDeleteAction={handleDeleteTask}
       />
 
       {/*

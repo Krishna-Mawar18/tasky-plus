@@ -32,7 +32,12 @@ export type WorkspacePermission =
   | 'attachment.view'
   | 'attachment.upload'
   | 'attachment.deleteOwn'
-  | 'attachment.deleteAny';
+  | 'attachment.deleteAny'
+  | 'link.view'
+  | 'link.create'
+  | 'link.editOwn'
+  | 'link.deleteOwn'
+  | 'link.deleteAny';
 
 const viewerPermissions: readonly WorkspacePermission[] = [
   'workspace.view',
@@ -50,6 +55,9 @@ const viewerPermissions: readonly WorkspacePermission[] = [
   // Read-only on attachments. A viewer can see what is attached and download
   // it, but cannot add or remove anything.
   'attachment.view',
+  // Links are read-only for a viewer for the same reason: adding a reference is
+  // a task write, not joining the discussion.
+  'link.view',
 ];
 
 const managerPermissions: readonly WorkspacePermission[] = [
@@ -66,6 +74,11 @@ const managerPermissions: readonly WorkspacePermission[] = [
   'task.move',
   'attachment.upload',
   'attachment.deleteOwn',
+  // Adding a reference is a task write, so it follows the attachment upload
+  // gate. A manager may edit and remove the links they added themselves.
+  'link.create',
+  'link.editOwn',
+  'link.deleteOwn',
 ];
 
 const ownerPermissions: readonly WorkspacePermission[] = [
@@ -79,6 +92,7 @@ const ownerPermissions: readonly WorkspacePermission[] = [
   // limited to their own comments and their own attachments.
   'comment.deleteAny',
   'attachment.deleteAny',
+  'link.deleteAny',
 ];
 
 export const rolePermissions: Record<WorkspaceRole, readonly WorkspacePermission[]> = {
@@ -194,6 +208,37 @@ export function canDeleteAttachment(
 ): boolean {
   if (can(role, 'attachment.deleteAny')) return true;
   return can(role, 'attachment.deleteOwn') && attachmentUploaderId === currentUserId;
+}
+
+/** Whether the link list should offer an Add Link control at all. */
+export function canManageLinks(role: WorkspaceRole | null | undefined): boolean {
+  return can(role, 'link.create');
+}
+
+/**
+ * Whether this user may edit one specific link: only its creator, and only
+ * while they still hold a role that allows link edits. An owner cannot rewrite
+ * somebody else's reference, only remove it.
+ */
+export function canEditLink(
+  role: WorkspaceRole | null | undefined,
+  linkCreatorId: string,
+  currentUserId: string | null | undefined,
+): boolean {
+  return can(role, 'link.editOwn') && linkCreatorId === currentUserId;
+}
+
+/**
+ * Whether this user may delete one specific link: owners delete any, managers
+ * only their own, viewers nothing. Mirrors `canDeleteAttachment`.
+ */
+export function canDeleteLink(
+  role: WorkspaceRole | null | undefined,
+  linkCreatorId: string,
+  currentUserId: string | null | undefined,
+): boolean {
+  if (can(role, 'link.deleteAny')) return true;
+  return can(role, 'link.deleteOwn') && linkCreatorId === currentUserId;
 }
 
 /**

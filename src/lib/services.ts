@@ -827,8 +827,8 @@ export const taskService = {
    * Delete a task and everything that hangs off it.
    *
    * Firestore rules cannot cascade, so this is the only correct way to remove a
-   * task: comments and attachment metadata are deleted explicitly before the
-   * task document itself, in batches so a long discussion cannot exceed the
+   * task: comments, attachment metadata and links are deleted explicitly before
+   * the task document itself, in batches so a long discussion cannot exceed the
    * 500-write batch limit.
    *
    * Object deletion goes through the storage abstraction and is reported, not
@@ -866,6 +866,19 @@ export const taskService = {
       attachmentMetadataDeleted += Math.min(FIRESTORE_BATCH_LIMIT, attachments.docs.length - index);
     }
 
+    // Links are metadata only — there is no object to remove — so they are
+    // deleted in batches exactly like comments and attachment metadata.
+    let linksDeleted = 0;
+    const links = await getDocs(collection(db, 'tasks', id, 'links'));
+    for (let index = 0; index < links.docs.length; index += FIRESTORE_BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      links.docs
+        .slice(index, index + FIRESTORE_BATCH_LIMIT)
+        .forEach((link) => batch.delete(link.ref));
+      await batch.commit();
+      linksDeleted += Math.min(FIRESTORE_BATCH_LIMIT, links.docs.length - index);
+    }
+
     // A storage failure must not stop the task document from being removed, or a
     // refused object call would leave an undeletable task behind. The keys are
     // still reported so the omission is visible.
@@ -886,6 +899,7 @@ export const taskService = {
       taskId: id,
       commentsDeleted,
       attachmentMetadataDeleted,
+      linksDeleted,
       storage,
       fullyDeleted: storage.pending.length === 0,
     };

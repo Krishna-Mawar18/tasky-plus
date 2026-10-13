@@ -107,6 +107,28 @@ Generated from verified IDs only, in one place (`buildAttachmentObjectKey`):
 workspaces/{workspaceId}/boards/{boardId}/tasks/{taskId}/attachments/{attachmentId}
 ```
 
+### `tasks/{taskId}/links/{linkId}` — new subcollection (added after phase 1)
+
+```ts
+{
+  createdBy: string;       // uid of the member who added it, immutable
+  createdByName: string;   // denormalised for rendering, same as comment authors
+  title: string;           // trimmed, 1..200 chars
+  url: string;             // absolute http(s) only, max 2048 chars
+  hostname: string;        // denormalised from the URL, for display
+  createdAt: Timestamp;
+  updatedAt: Timestamp;    // equals createdAt until edited
+}
+```
+
+External references a task points at. Metadata only — no object store is involved, so links remain
+usable while file storage is not connected. Unlike attachments, a link is **editable**: its creator
+may correct the title or address, and the creator or the workspace owner may remove it. `createdBy`
+and `createdAt` are pinned so an edit cannot rewrite who added the link or when. URLs are restricted
+to `http`/`https` in both `linkValidation.ts` and the rules, so a `javascript:` or `data:` target
+cannot be stored. Duplicate detection compares the normalised URL and is best-effort — the query is
+not transactional, which the service documents.
+
 ---
 
 ## 3. Storage abstraction
@@ -167,6 +189,11 @@ authoritative; the UI only decides what to draw.
 | Upload attachment | yes | yes | no |
 | Delete any attachment | yes | no | no |
 | Delete own attachment | yes | yes | no |
+| Read links | yes | yes | yes |
+| Add link | yes | yes | no |
+| Edit own link | yes | yes | no |
+| Delete any link | yes | no | no |
+| Delete own link | yes | yes | no |
 | Archive / restore task | yes | yes | no |
 | Permanently delete task | yes | yes | no |
 
@@ -191,6 +218,9 @@ Rules hardened in this phase (all additive restrictions, nothing weakened):
    `archivedBy == request.auth.uid` and a non-null `archivedAt`. Without this, a client could archive
    a task with no timestamp and the 90-day cleanup could never find it.
 8. **Attachments are immutable** — there is no `update` rule for the subcollection.
+9. **Link scheme and size limits** — a link's `url` must match `^https?://` and be at most 2048
+   characters; the title must be 1..200 characters. `createdBy`/`createdAt` are pinned on edit and an
+   update may touch only `title`, `url`, `hostname` and `updatedAt`.
 
 ---
 
@@ -208,6 +238,8 @@ read tasks/{id}/attachments  → collect s3Keys
 delete comments
   ↓
 delete attachment metadata
+  ↓
+delete links
   ↓
 storageProvider.deleteAttachments(s3Keys)
       → { deleted: [], pending: [ … ] }   ← honest while S3 is absent

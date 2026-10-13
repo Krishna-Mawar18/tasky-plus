@@ -1518,9 +1518,9 @@ export default function DashboardPage() {
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
+        onCloseAction={() => setShowDeleteModal(false)}
         workspace={selectedWorkspace}
-        onConfirm={handleDeleteConfirm}
+        onConfirmAction={handleDeleteConfirm}
         isDeleting={isDeleting}
       />
 

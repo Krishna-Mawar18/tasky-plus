@@ -6,8 +6,8 @@ import { Workspace } from '@/types';
 
 interface CreateBoardModalProps {
   isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (data: { name: string; description: string; workspaceId: string; columns?: { id: string; name: string; order: number }[] }) => void;
+  onCloseAction: () => void;
+  onSubmitAction: (data: { name: string; description: string; workspaceId: string; columns?: { id: string; name: string; order: number }[] }) => void;
   workspaces: Workspace[];
 }
 
@@ -45,7 +45,7 @@ const boardTemplates = [
   }
 ];
 
-export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces }: CreateBoardModalProps) {
+export default function CreateBoardModal({ isOpen, onCloseAction, onSubmitAction, workspaces }: CreateBoardModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -72,7 +72,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
     try {
       const templateColumns = getTemplateColumns(formData.template);
       
-      await onSubmit({
+      await onSubmitAction({
         name: formData.name.trim(),
         description: formData.description.trim(),
         workspaceId: formData.workspaceId,
@@ -86,7 +86,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
         workspaceId: workspaces.length > 0 ? workspaces[0].id : '',
         template: 'basic-kanban'
       });
-      onClose();
+      onCloseAction();
     } catch (error) {
       console.error('Error creating board:', error);
       alert('Failed to create board. Please try again.');
@@ -114,7 +114,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black/50 backdrop-blur-xl z-40 animate-fadein"
-        onClick={onClose}
+        onClick={onCloseAction}
       />
       
       {/* Modal */}
@@ -124,7 +124,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
           <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-t-xl">
             <h2 className="text-2xl font-bold font-mono">Create New Board</h2>
             <button
-              onClick={onClose}
+              onClick={onCloseAction}
               className="p-2 hover:bg-gray-100 rounded-lg transition-all duration-200 hover:scale-110"
             >
               <X className="w-5 h-5" />
@@ -239,7 +239,7 @@ export default function CreateBoardModal({ isOpen, onClose, onSubmit, workspaces
             <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={onCloseAction}
                 className="px-4 py-2 text-gray-600 font-mono font-bold hover:bg-gray-100 rounded-lg transition-all duration-200 hover:scale-105"
               >
                 Cancel

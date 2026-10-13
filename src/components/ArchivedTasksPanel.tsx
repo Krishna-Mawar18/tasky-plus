@@ -11,8 +11,8 @@ interface ArchivedTasksPanelProps {
   tasks: Task[];
   role: WorkspaceRole | null;
   restoringId: string | null;
-  onRestore: (task: Task) => void;
-  onRequestDelete: (task: Task) => void;
+  onRestoreAction: (task: Task) => void;
+  onRequestDeleteAction: (task: Task) => void;
 }
 
 /**
@@ -30,8 +30,8 @@ export function ArchivedTasksPanel({
   tasks,
   role,
   restoringId,
-  onRestore,
-  onRequestDelete,
+  onRestoreAction,
+  onRequestDeleteAction,
 }: ArchivedTasksPanelProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -112,7 +112,7 @@ export function ArchivedTasksPanel({
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <button
                         type="button"
-                        onClick={() => onRestore(task)}
+                        onClick={() => onRestoreAction(task)}
                         disabled={restoringId === task.id}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 border-2 border-gray-300 rounded-lg font-mono font-bold text-xs text-gray-800 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -126,7 +126,7 @@ export function ArchivedTasksPanel({
 
                       <button
                         type="button"
-                        onClick={() => onRequestDelete(task)}
+                        onClick={() => onRequestDeleteAction(task)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 border-2 border-red-200 rounded-lg font-mono font-bold text-xs text-red-600 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

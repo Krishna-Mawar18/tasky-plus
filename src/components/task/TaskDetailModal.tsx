@@ -39,14 +39,14 @@ interface TaskDetailModalProps {
   currentUserPhotoURL: string | null;
   /** Whether this user may edit the task. Viewers cannot. */
   canEdit: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   /** Persists the task fields. Reuses the board's existing update path. */
-  onSave: (taskId: string, values: TaskEditFormValues) => Promise<void>;
-  onSaveAssignees: (taskId: string, uids: string[]) => Promise<void>;
-  onArchive: (task: Task) => void;
-  onRestore: (task: Task) => void;
+  onSaveAction: (taskId: string, values: TaskEditFormValues) => Promise<void>;
+  onSaveAssigneesAction: (taskId: string, uids: string[]) => Promise<void>;
+  onArchiveAction: (task: Task) => void;
+  onRestoreAction: (task: Task) => void;
   /** Opens the board's permanent-delete confirmation. */
-  onRequestDelete: (task: Task) => void;
+  onRequestDeleteAction: (task: Task) => void;
 }
 
 const priorityStyles: Record<Task['priority'], string> = {
@@ -91,12 +91,12 @@ export function TaskDetailModal({
   currentUserName,
   currentUserPhotoURL,
   canEdit,
-  onClose,
-  onSave,
-  onSaveAssignees,
-  onArchive,
-  onRestore,
-  onRequestDelete,
+  onCloseAction,
+  onSaveAction,
+  onSaveAssigneesAction,
+  onArchiveAction,
+  onRestoreAction,
+  onRequestDeleteAction,
 }: TaskDetailModalProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<TaskEditFormValues | null>(null);
@@ -124,7 +124,7 @@ export function TaskDetailModal({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !saving) {
         if (editing) setEditing(false);
-        else onClose();
+        else onCloseAction();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -133,7 +133,7 @@ export function TaskDetailModal({
       document.body.style.overflow = previous;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [task, onClose, editing, saving]);
+  }, [task, onCloseAction, editing, saving]);
 
   const column = useMemo(
     () => columns.find((candidate) => candidate.id === task?.columnId) ?? null,
@@ -167,7 +167,7 @@ export function TaskDetailModal({
     setSaving(true);
     setSaveError(null);
     try {
-      await onSave(task.id, draft);
+      await onSaveAction(task.id, draft);
       setEditing(false);
       setDraft(null);
     } catch (cause) {
@@ -180,7 +180,7 @@ export function TaskDetailModal({
   const changeAssignees = async (uids: string[]) => {
     setAssigneeError(null);
     try {
-      await onSaveAssignees(task.id, uids);
+      await onSaveAssigneesAction(task.id, uids);
     } catch (cause) {
       setAssigneeError(cause instanceof Error ? cause.message : 'Could not change assignees.');
     }
@@ -193,7 +193,7 @@ export function TaskDetailModal({
       aria-modal="true"
       aria-label={task.title}
     >
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={saving ? undefined : onCloseAction} />
 
       <div className="relative bg-white w-full sm:max-w-3xl sm:rounded-2xl shadow-2xl sm:my-4 flex flex-col max-h-[100dvh] sm:max-h-[90vh] animate-fadeIn">
         {/* Header */}
@@ -236,7 +236,7 @@ export function TaskDetailModal({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={onCloseAction}
             disabled={saving}
             className="p-2 text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-40 flex-shrink-0"
             aria-label="Close task"
@@ -356,6 +356,7 @@ export function TaskDetailModal({
             boardId={task.boardId}
             role={role}
             currentUserId={currentUserId}
+            currentUserName={currentUserName}
           />
 
           {/* Comments */}
@@ -401,7 +402,7 @@ export function TaskDetailModal({
               (archived ? (
                 <button
                   type="button"
-                  onClick={() => onRestore(task)}
+                  onClick={() => onRestoreAction(task)}
                   disabled={saving}
                   className="inline-flex items-center gap-2 px-3 py-2 border-2 border-gray-300 rounded-lg font-mono font-bold text-xs text-gray-800 hover:bg-white transition-colors disabled:opacity-50"
                 >
@@ -411,7 +412,7 @@ export function TaskDetailModal({
               ) : (
                 <button
                   type="button"
-                  onClick={() => onArchive(task)}
+                  onClick={() => onArchiveAction(task)}
                   disabled={saving}
                   className="inline-flex items-center gap-2 px-3 py-2 border-2 border-gray-300 rounded-lg font-mono font-bold text-xs text-gray-800 hover:bg-white transition-colors disabled:opacity-50"
                 >
@@ -462,7 +463,7 @@ export function TaskDetailModal({
             {mayArchive && (
               <button
                 type="button"
-                onClick={() => onRequestDelete(task)}
+                onClick={() => onRequestDeleteAction(task)}
                 disabled={saving}
                 className="inline-flex items-center gap-2 px-3 py-2 border-2 border-red-200 rounded-lg font-mono font-bold text-xs text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
               >

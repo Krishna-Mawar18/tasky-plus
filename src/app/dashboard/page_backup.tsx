@@ -592,8 +592,8 @@ export default function DashboardPage() {
       {/* Create Board Modal */}
       <CreateBoardModal
         isOpen={showCreateBoardModal}
-        onClose={() => setShowCreateBoardModal(false)}
-        onSubmit={handleCreateBoardSubmit}
+        onCloseAction={() => setShowCreateBoardModal(false)}
+        onSubmitAction={handleCreateBoardSubmit}
         workspaces={workspaces}
       />
 

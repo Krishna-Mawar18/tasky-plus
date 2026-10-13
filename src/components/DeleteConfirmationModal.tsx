@@ -5,17 +5,17 @@ import { Workspace } from '@/types';
 
 interface DeleteConfirmationModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   workspace: Workspace | null;
-  onConfirm: () => void;
+  onConfirmAction: () => void;
   isDeleting: boolean;
 }
 
 export default function DeleteConfirmationModal({ 
   isOpen, 
-  onClose, 
+  onCloseAction, 
   workspace, 
-  onConfirm, 
+  onConfirmAction, 
   isDeleting 
 }: DeleteConfirmationModalProps) {
   if (!isOpen || !workspace) return null;
@@ -25,7 +25,7 @@ export default function DeleteConfirmationModal({
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={onCloseAction}
       />
       
       {/* Modal */}
@@ -42,7 +42,7 @@ export default function DeleteConfirmationModal({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={onCloseAction}
             className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -85,7 +85,7 @@ export default function DeleteConfirmationModal({
           <div className="flex space-x-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={onCloseAction}
               disabled={isDeleting}
               className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-mono font-bold text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -93,9 +93,9 @@ export default function DeleteConfirmationModal({
             </button>
             <button
               type="button"
-              onClick={onConfirm}
+              onClick={onConfirmAction}
               disabled={isDeleting}
-              className="flex-1 px-4 py-3 bg-red-500 text-white rounded-lg font-mono font-bold text-sm hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              className="flex-1 px-4 py-3 bg-red-500 text-white border-2 border-red-500 rounded-lg font-mono font-bold text-sm hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {isDeleting ? (
                 <>
