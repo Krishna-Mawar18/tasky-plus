@@ -567,7 +567,7 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 sm:h-20">
             <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
-              <Image src="/tasky_logo.svg" alt="Tasky Logo" width={40} height={40} className="w-8 h-8 sm:w-10 sm:h-10 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
+              <Image src="/tasky.svg" alt="Tasky Logo" width={40} height={40} className="w-8 h-8 sm:w-10 sm:h-10 transition-transform rounded-xl duration-300 hover:scale-110 hover:shadow-lg" />
               <span className="text-xl sm:text-2xl font-extrabold font-mono tracking-tight">tasky</span>
             </div>
             

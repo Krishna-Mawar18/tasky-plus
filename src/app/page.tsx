@@ -171,7 +171,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 sm:h-20">
             <div className="flex items-center space-x-2 sm:space-x-3">
-              <Image src="/tasky_logo.svg" alt="Tasky Logo" width={48} height={48} className="w-8 h-8 sm:w-12 sm:h-12 transition-transform duration-300 hover:scale-110 hover:shadow-lg" />
+              <Image src="/tasky.svg" alt="Tasky Logo" width={48} height={48} className="w-8 h-8 sm:w-12 sm:h-12 transition-transform rounded-xl duration-300 hover:scale-110 hover:shadow-lg" />
               <span className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-mono tracking-tight">Tasky</span>
             </div>
             <div className="flex items-center">
@@ -192,12 +192,9 @@ export default function HomePage() {
           {/* Animated Geometric Logo */}
           <div className="flex justify-center mb-4 sm:mb-6">
             <div className="relative">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-black rounded-lg flex items-center justify-center text-white text-lg sm:text-2xl font-bold shadow-lg hover:scale-110 transition-transform duration-300 animate-bounce-slow">
-                <span className="hidden sm:inline">Tasky</span>
-                <span className="sm:hidden">T</span>
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-transparent flex items-center justify-center text-lg sm:text-2xl font-bold hover:scale-110 transition-transform duration-300 animate-bounce-slow">
+                <Image src="/tasky.svg" alt="Tasky Logo" width={48} height={48} className='h-full w-full rounded-2xl'/>
               </div>
-              <div className="absolute -top-1 -right-1 w-6 h-6 sm:w-8 sm:h-8 bg-blue-500 rounded-full animate-float"></div>
-              <div className="absolute -bottom-1 -left-1 w-4 h-4 sm:w-5 sm:h-5 bg-pink-500 rounded-full animate-float-reverse"></div>
             </div>
           </div>
 
