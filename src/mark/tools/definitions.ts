@@ -49,6 +49,19 @@ const COMMENT = str('The comment id, which belongs to the given task.');
 const LINK = str('The link id, which belongs to the given task.');
 
 export const MARK_TOOL_DEFINITIONS: readonly MarkToolDefinition[] = [
+  // ---- Identity ---------------------------------------------------------
+  {
+    name: 'get_current_user',
+    description:
+      'Identify the signed-in user. When a workspaceId is given, also return the current user’s effective role in that workspace. Use this to answer "who am I?" or to check your own role; the identity comes from the verified session, so never guess it and never ask the user for their own uid or role.',
+    risk: 'read',
+    mutating: false,
+    parameters: obj(
+      { workspaceId: str('Optional workspace id, to resolve the current user’s role in that workspace.') },
+      [],
+    ),
+  },
+
   // ---- Workspaces -------------------------------------------------------
   {
     name: 'list_workspaces',

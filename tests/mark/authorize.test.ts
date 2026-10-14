@@ -29,6 +29,7 @@ test('viewers may read and comment but not clear up after others', () => {
 test('workspace-agnostic tools are allowed for any signed-in user', () => {
   assert.equal(authorizeTool('list_workspaces', null).allowed, true);
   assert.equal(authorizeTool('create_workspace', null).allowed, true);
+  assert.equal(authorizeTool('get_current_user', null).allowed, true);
 });
 
 test('workspace-scoped tools are denied without a role', () => {

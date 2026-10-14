@@ -51,8 +51,12 @@ export interface AuthorizationResult {
   reason?: string;
 }
 
-/** Tools that are not scoped to a workspace and are available to any signed-in user. */
-const WORKSPACE_AGNOSTIC = new Set(['list_workspaces', 'create_workspace']);
+/**
+ * Tools that are not scoped to a workspace and are available to any signed-in
+ * user. `get_current_user` reports the caller's own verified identity (and their
+ * role only when they pass a workspace id), so it needs no workspace to authorize.
+ */
+const WORKSPACE_AGNOSTIC = new Set(['list_workspaces', 'create_workspace', 'get_current_user']);
 
 export function authorizeTool(toolName: string, role: WorkspaceRole | null): AuthorizationResult {
   if (!getToolDefinition(toolName)) {

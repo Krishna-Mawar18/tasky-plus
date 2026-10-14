@@ -61,6 +61,21 @@ function taskData(overrides = {}) {
   };
 }
 
+/**
+ * A task as `create_task` leaves it when nobody is assigned.
+ *
+ * Multi-assignee fields are present and empty, and the legacy single-assignee
+ * mirror (`assigneeId`/`assigneeName`) is absent entirely — the `defined()`
+ * helper in the executor prunes the `undefined` values. The update rule used to
+ * reject this shape, so reproducing it exactly is the point of these tests.
+ */
+function unassignedTaskData(overrides = {}) {
+  const data = taskData();
+  delete data.assigneeId;
+  delete data.assigneeName;
+  return { ...data, ...overrides };
+}
+
 function commentData(overrides = {}) {
   return {
     uid: MANAGER,
@@ -248,6 +263,66 @@ describe('task assignees', () => {
           assigneeId: null,
           assigneeName: null,
         }),
+    );
+  });
+
+  it('lets a manager update an unassigned task that carries no assigneeId field', async () => {
+    // The migration regression: Mark creates an unassigned task with
+    // `assigneeIds: []` and no `assigneeId`, which `create` accepted. The update
+    // rule then rejected it, so `update_task` and `move_task` always failed with
+    // a misleading "role does not permit that action" denial.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(`tasks/task1`).set(unassignedTaskData());
+    });
+
+    await assertSucceeds(
+      authed(MANAGER).doc(`tasks/task1`).update({ title: 'Renamed' }),
+    );
+  });
+
+  it('lets a manager move an unassigned task that carries no assigneeId field', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(`tasks/task1`).set(unassignedTaskData());
+    });
+
+    await assertSucceeds(
+      authed(MANAGER)
+        .doc(`tasks/task1`)
+        .update({ columnId: 'col-done', status: 'completed', order: 2000 }),
+    );
+  });
+
+  it('lets a manager move a manually-created task that sets assigneeId and no assigneeIds', async () => {
+    // The board's create form writes a single `assigneeId` and no `assigneeIds`.
+    // A drag/step move is an `update` writing only columnId/order/status, so this
+    // must succeed — the plainest move case, independent of the Mark fix above.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const data = taskData({ assigneeId: MANAGER, assigneeName: 'manager1' });
+      delete data.assigneeIds;
+      delete data.assigneeNames;
+      await context.firestore().doc(`tasks/task1`).set(data);
+    });
+
+    await assertSucceeds(
+      authed(MANAGER)
+        .doc(`tasks/task1`)
+        .update({ columnId: 'col-done', status: 'completed', order: 2000 }),
+    );
+  });
+
+  it('still refuses a non-empty array without its mirror even with no assigneeId field', async () => {
+    // Removing the extra guard must not open a hole: an array with assignees
+    // still has to carry a consistent mirror, so a desynchronised write is
+    // refused whether or not the field previously existed.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(`tasks/task1`).set(unassignedTaskData());
+    });
+
+    await assertFails(
+      authed(MANAGER).doc(`tasks/task1`).update({
+        assigneeIds: [MANAGER2],
+        assigneeNames: ['manager2'],
+      }),
     );
   });
 

@@ -196,6 +196,35 @@ async function allTasksInWorkspace(workspaceId: string): Promise<{ boards: Board
 }
 
 export const EXECUTORS: Record<string, ToolExecutor> = {
+  // ---- Identity ---------------------------------------------------------
+  /**
+   * Report the caller's own identity from `ctx.user` — the verified token — never
+   * from anything the model supplied. The optional `workspaceId` resolves the
+   * caller's effective role through the same path every other tool uses, so the
+   * model can learn its role without being able to assert it.
+   */
+  async get_current_user(args, ctx) {
+    const name = ctx.user.displayName || ctx.user.email || 'this user';
+    const identity = {
+      uid: ctx.user.uid,
+      displayName: ctx.user.displayName,
+      email: ctx.user.email,
+    };
+
+    const workspaceId = asOptionalString(args, 'workspaceId')?.trim();
+    if (!workspaceId) {
+      return ok(`The signed-in user is ${name}.`, identity);
+    }
+
+    const access = await resolveWorkspaceAccess(workspaceId, ctx.user.uid);
+    if (!access.ok) return fail(access.reason);
+    return ok(`The signed-in user is ${name}, with the role “${access.role}” in this workspace.`, {
+      ...identity,
+      workspaceId,
+      role: access.role,
+    });
+  },
+
   // ---- Workspaces -------------------------------------------------------
   async list_workspaces(_args, ctx) {
     const workspaces = await workspaceService.getWorkspaces(ctx.user.uid);
@@ -480,8 +509,8 @@ export const EXECUTORS: Record<string, ToolExecutor> = {
         description: asOptionalString(args, 'description')?.trim(),
         status: statusForColumn(columnId, board.columns ?? []),
         priority,
-        assigneeId: assignees.members[0]?.uid,
-        assigneeName: assignees.members[0]?.name,
+        assigneeId: assignees.members[0]?.uid ?? null,
+        assigneeName: assignees.members[0]?.name ?? null,
         assigneeIds: assignees.members.map((member) => member.uid),
         assigneeNames: assignees.members.map((member) => member.name),
         dueDate: due.date,

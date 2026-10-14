@@ -440,10 +440,14 @@ service cloud.firestore {
         // cannot be forged by naming somebody else.
         && archiveFieldsAreConsistent(request.resource.data)
         // The single-assignee mirror has to be written together with the array.
+        // `assigneeMirrorIsConsistent` already accepts the empty case — an
+        // unassigned task legitimately has no `assigneeId` — so there is no
+        // extra "must carry assigneeId" guard here. Adding one rejected exactly
+        // the shape `create_task` writes for an unassigned task (`assigneeIds:
+        // []`, no `assigneeId`), so those tasks could be created but never
+        // updated or moved, even though `create` accepted them.
         && (!('assigneeIds' in request.resource.data)
-          || (!('assigneeId' in request.resource.data)
-            ? false
-            : assigneeMirrorIsConsistent(request.resource.data)))
+          || assigneeMirrorIsConsistent(request.resource.data))
         && (!('assigneeIds' in request.resource.data)
           || allAssigneesAreMembers(taskWorkspaceId(request.resource.data), request.resource.data.assigneeIds));
 

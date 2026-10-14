@@ -73,6 +73,20 @@ export class MarkAgent {
   private busy = false;
   private context: FocusContext = {};
 
+  /**
+   * Results of every action already executed during the current user turn,
+   * keyed by the canonical tool + arguments signature.
+   *
+   * A repeated call is answered from here instead of being run again, so an
+   * identical read is not re-fetched and — more importantly — a mutating call is
+   * never re-issued. This is request-scoped: it is cleared at the start of each
+   * turn and includes actions run through an approval, so a model that re-issues
+   * the approved call after it ran still cannot execute it twice.
+   */
+  private readonly turnResults = new Map<string, unknown>();
+  /** How many times a repeated call has been answered from `turnResults`. */
+  private readonly turnRepeats = new Map<string, number>();
+
   constructor(options: MarkAgentOptions) {
     this.user = options.user;
     this.client = options.client;
@@ -113,6 +127,11 @@ export class MarkAgent {
     const trimmed = text.trim();
     if (!trimmed || this.busy) return;
 
+    // A new turn gets a fresh result cache: repeated-call suppression is scoped
+    // to the turn it belongs to.
+    this.turnResults.clear();
+    this.turnRepeats.clear();
+
     this.emit({ type: 'user_message', text: trimmed });
     this.conversation.addUser(this.withContext(trimmed));
 
@@ -140,6 +159,18 @@ export class MarkAgent {
     if (!validation.ok) {
       this.pending = null;
       this.emit({ type: 'approval_resolved', id, status: 'cancelled' });
+      this.audit.record({
+        userId: this.user.uid,
+        tool: pending.call.name,
+        risk: pending.risk.level,
+        approvalRequired: true,
+        approvalId: id,
+        workspaceId: asString(pending.call.arguments, 'workspaceId') || undefined,
+        resourceIds: extractResourceIds(pending.call.arguments),
+        affectedCount: pending.risk.affectedCount,
+        outcome: 'cancelled',
+        detail: validation.reason,
+      });
       this.conversation.addToolResult(
         pending.call.id,
         pending.call.name,
@@ -154,6 +185,7 @@ export class MarkAgent {
     this.emit({ type: 'approval_resolved', id, status: 'approved' });
 
     const result = await this.runExecutor(pending.call);
+    this.rememberExecution(pending.call, result);
     this.conversation.addToolResult(pending.call.id, pending.call.name, JSON.stringify(result));
     await this.runLoop();
   }
@@ -166,6 +198,18 @@ export class MarkAgent {
     this.approvals.cancel(id, this.user.uid);
     this.pending = null;
     this.emit({ type: 'approval_resolved', id, status: 'cancelled' });
+    this.audit.record({
+      userId: this.user.uid,
+      tool: pending.call.name,
+      risk: pending.risk.level,
+      approvalRequired: true,
+      approvalId: id,
+      workspaceId: asString(pending.call.arguments, 'workspaceId') || undefined,
+      resourceIds: extractResourceIds(pending.call.arguments),
+      affectedCount: pending.risk.affectedCount,
+      outcome: 'cancelled',
+      detail: 'The user declined this action.',
+    });
     this.conversation.addToolResult(
       pending.call.id,
       pending.call.name,
@@ -179,14 +223,13 @@ export class MarkAgent {
     this.conversation.reset();
     this.approvals.clear();
     this.pending = null;
+    this.turnResults.clear();
+    this.turnRepeats.clear();
   }
 
   private async runLoop(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
-    // Track identical actions within this turn so a model that keeps re-issuing
-    // the same call (for example after a failed write) cannot spin the loop.
-    const attempted = new Map<string, number>();
     try {
       for (let step = 0; step < MARK_LIMITS.maxToolSteps; step += 1) {
         const response = await this.client.chat(this.conversation.toProviderMessages());
@@ -240,19 +283,18 @@ export class MarkAgent {
           }
 
           const signature = canonicalKey(call.name, call.arguments);
-          const repeats = attempted.get(signature) ?? 0;
-          if (repeats >= 1) {
-            // The same tool, with identical arguments, has already run this
-            // turn. Refuse to repeat it, and give up if the model insists.
+          if (this.turnResults.has(signature)) {
+            // This exact action already ran this turn. Answer from the recorded
+            // result instead of executing it again — an identical read is not
+            // re-fetched, and a mutating call is never repeated. If the model
+            // still insists, stop rather than spin.
+            const repeats = (this.turnRepeats.get(signature) ?? 0) + 1;
+            this.turnRepeats.set(signature, repeats);
             this.conversation.addToolResult(
               call.id,
               call.name,
-              JSON.stringify({
-                error:
-                  'This exact action was already attempted in this turn; it will not be run again. Do not repeat it — use the earlier result or try a different approach.',
-              }),
+              JSON.stringify(this.turnResults.get(signature)),
             );
-            attempted.set(signature, repeats + 1);
             if (repeats >= 2) {
               this.emit({
                 type: 'error',
@@ -262,9 +304,9 @@ export class MarkAgent {
             }
             continue;
           }
-          attempted.set(signature, repeats + 1);
 
           const result = await this.runExecutor(call);
+          this.rememberExecution(call, result);
           this.conversation.addToolResult(call.id, call.name, JSON.stringify(result));
         }
       }
@@ -367,6 +409,16 @@ export class MarkAgent {
 
   private emit(event: MarkEvent): void {
     this.onEvent(event);
+  }
+
+  /**
+   * Record that a call has run this turn, keyed by its canonical signature.
+   *
+   * The stored value is exactly what the model was told, so a repeat can be
+   * answered with the same result without running the tool a second time.
+   */
+  private rememberExecution(call: ProposedToolCall, result: unknown): void {
+    this.turnResults.set(canonicalKey(call.name, call.arguments), result);
   }
 
   /**

@@ -98,8 +98,25 @@ export async function POST(request: Request) {
     return NextResponse.json(payload);
   } catch (error) {
     if (error instanceof ProviderError) {
-      const status = error.code === 'not_configured' ? 503 : error.code === 'rate_limited' ? 429 : 502;
-      return errorResponse(status, error.code, 'Mark could not reach its model provider. Please try again.');
+      const status =
+        error.code === 'not_configured'
+          ? 503
+          : error.code === 'rate_limited'
+            ? 429
+            : error.code === 'timeout'
+              ? 504
+              : 502;
+      // Distinct, non-leaking messages: a rate limit or a timeout is worth
+      // retrying shortly, while a misconfiguration is not the user's to solve.
+      const message =
+        error.code === 'rate_limited'
+          ? 'Mark is handling a lot of requests right now. Please wait a moment and try again.'
+          : error.code === 'timeout'
+            ? 'Mark’s model provider took too long to respond. Please try again.'
+            : error.code === 'not_configured'
+              ? 'Mark is not fully configured right now. Please try again later.'
+              : 'Mark could not reach its model provider. Please try again.';
+      return errorResponse(status, error.code, message);
     }
     console.error('Mark provider call failed:', error);
     return errorResponse(500, 'unknown', 'Mark ran into an unexpected problem.');
