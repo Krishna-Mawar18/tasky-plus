@@ -1,6 +1,11 @@
 # Tasky - Real-time Collaborative Task Management
 
-A modern, full-stack task management web app built with Next.js 15, TypeScript, Tailwind CSS, and Firebase. Features real-time collaboration, Kanban boards, workspaces, notifications, and a beautiful animated UI.
+A modern, full-stack task management web app built with Next.js 15, TypeScript, Tailwind CSS, and Firebase. Features real-time collaboration, Kanban boards, workspaces, role-based access, task comments, attachments, external links, archiving, notifications, and a beautiful animated UI.
+
+> **Note on file storage:** upload/download/delete of attachment *files* against object
+> storage (AWS S3) is **not implemented yet**. Attachment metadata, comments and external
+> links work today; the object-store boundary (`src/lib/storageService.ts`) is defined and
+> ready for S3 to plug in. See `docs/v2-phase1-architecture.md` and the Roadmap.
 
 ## ✨ Features
 
@@ -34,10 +39,49 @@ A modern, full-stack task management web app built with Next.js 15, TypeScript, 
 - Create tasks with title, description, priority, and due dates
 - Priority levels: Low (Green), Medium (Yellow), High (Red)
 - Optimistic UI updates for instant feedback, with automatic rollback if a save fails
-- Task editing and deletion with confirmation modals
 - Move tasks between columns with forward/back buttons
 - Due date tracking with visual indicators (Overdue, Today, Tomorrow, X days)
 - Disabled for Viewers, who see the same board read-only
+
+### 🗂 Task Detail Modal
+
+- Opens over the board without navigating, so scroll position and drag state are preserved
+- Read, edit and delete a task without leaving the board (viewers can open and read)
+- **Multiple assignees** (up to 5), chosen from workspace members only
+- Markdown descriptions, priority, due date and tags
+- Comment thread, attachments and external links all live here
+- Archive / restore and permanent delete (manager and above)
+
+### 💬 Comments
+
+- Per-task discussion thread at `tasks/{taskId}/comments/{commentId}`
+- Markdown content, rendered through a sanitising renderer
+- Everyone in the workspace — including Viewers — can read and post comments
+- Authors edit their own comments; the workspace owner can delete any comment
+- Live updates via a Firestore snapshot listener
+
+### 📎 Attachments (metadata only)
+
+- Per-task attachments at `tasks/{taskId}/attachments/{attachmentId}`
+- Accepted types: jpg, jpeg, png, pdf, xls, xlsx, md; hard ceiling of 10 MB
+- Uploads and downloads are **disabled until an object store is connected**
+- Firestore stores metadata only — no binary, no base64, no permanent public URL
+- Duplicate-filename detection, and image inline preview once storage lands
+
+### 🔗 External Links
+
+- Per-task links at `tasks/{taskId}/links/{linkId}`
+- A reference list for a task, independent of file storage, so it works today
+- URLs restricted to `http`/`https` (a `javascript:`/`data:` target cannot be stored)
+- The creator can edit the title or address; the creator or workspace owner can remove it
+
+### 🗄 Task Archiving & Retention
+
+- Archive a task to hide it from the board without deleting it
+- Archived tasks are filtered out of the board **from data already fetched** (no extra query)
+- A collapsible Archived panel lists them, with restore and permanent delete
+- 90-day retention clock is tracked on `archivedAt`
+- A cleanup service (`taskCleanupService`) exists for the expiry sweep but is **not scheduled** yet
 
 ### 👤 User Authentication
 
@@ -85,15 +129,18 @@ A modern, full-stack task management web app built with Next.js 15, TypeScript, 
 ## 🛠 Tech Stack
 
 | Category | Technology |
-|----------|------------|
 
+|----------|------------|
 | **Frontend** | Next.js 15 (App Router), React 19, TypeScript |
-| **Styling** | Tailwind CSS 4, CSS Animations |
+| **Styling** | Tailwind CSS 4 (PostCSS), CSS Animations |
+| **Drag & Drop** | dnd-kit (`@dnd-kit/core`, `sortable`, `utilities`) |
 | **Icons** | Lucide React, Heroicons |
 | **Auth** | Firebase Authentication (Google OAuth) |
 | **Database** | Cloud Firestore (Real-time listeners) |
+| **Markdown** | react-markdown + remark-gfm (sanitised renderer) |
 | **Notifications** | React Hot Toast, Custom Notification Service |
 | **Fonts** | Geist Sans & Geist Mono (Google Fonts) |
+| **Testing** | Mocha + `@firebase/rules-unit-testing` (Firestore emulator) |
 | **Deployment** | Vercel |
 
 ## 📁 Project Structure
@@ -101,65 +148,94 @@ A modern, full-stack task management web app built with Next.js 15, TypeScript, 
 ```bash
 tasky/
 ├── public/
-│   ├── tasky_logo.svg
-│   ├── favicon.ico
+│   ├── tasky.svg
 │   └── ...
 ├── src/
-│   ├── app/                          # Next.js App Router
-│   │   ├── page.tsx                  # Landing page (marketing + auth)
-│   │   ├── layout.tsx                # Root layout + providers
-│   │   ├── globals.css               # Global styles + animations
+│   ├── app/                              # Next.js App Router
+│   │   ├── page.tsx                      # Landing page (marketing + auth)
+│   │   ├── layout.tsx                    # Root layout + providers
+│   │   ├── globals.css                   # Global styles + animations
 │   │   ├── dashboard/
-│   │   │   └── page.tsx              # Main dashboard (workspaces, stats, notifications)
+│   │   │   └── page.tsx                  # Dashboard (workspaces, stats, notifications)
 │   │   └── workspace/
-│   │       ├── [workspaceId]/
-│   │       │   ├── page.tsx          # Workspace view (boards list)
-│   │       │   ├── settings/
-│   │       │   │   └── members/
-│   │       │   │       └── page.tsx  # Members list, roles, add/remove
-│   │       │   └── board/
-│   │       │       └── [boardId]/
-│   │       │           └── page.tsx  # Kanban board view
-│   │       └── ...
+│   │       └── [workspaceId]/
+│   │           ├── page.tsx              # Workspace view (boards list)
+│   │           ├── settings/
+│   │           │   └── members/page.tsx  # Members list, roles, add/remove
+│   │           └── board/
+│   │               └── [boardId]/page.tsx # Kanban board view + task modal host
 │   ├── contexts/
-│   │   ├── AuthContext.tsx           # Firebase auth state management
-│   │   └── WorkspaceRoleContext.tsx  # Resolves the current user's role
+│   │   ├── AuthContext.tsx               # Firebase auth state management
+│   │   └── WorkspaceRoleContext.tsx      # Resolves the current user's role
+│   ├── hooks/
+│   │   ├── useTaskComments.ts            # Comment subscription + mutations
+│   │   ├── useTaskAttachments.ts         # Attachment metadata state
+│   │   └── useTaskLinks.ts               # Link list state
 │   ├── lib/
-│   │   ├── firebase.ts               # Firebase initialization
-│   │   ├── services.ts               # Firestore CRUD (workspaces, members, boards, tasks, users)
-│   │   ├── permissions.ts            # Role → permission matrix
-│   │   ├── memberErrors.ts           # Typed member-management errors
-│   │   ├── userEmailIndex.ts         # Hash, resolve and publish user emails
-│   │   ├── notificationService.ts    # Enhanced notification system
-│   │   ├── taskOrder.ts              # Sparse task ordering + rebalancing
-│   │   └── services_new.ts           # (Backup/alternative services)
+│   │   ├── firebase.ts                   # Firebase initialization
+│   │   ├── services.ts                   # Firestore CRUD (workspaces, members, boards, tasks, users, stats, search)
+│   │   ├── permissions.ts                # Role → permission matrix (mirrors rules)
+│   │   ├── memberErrors.ts               # Typed member-management errors
+│   │   ├── userEmailIndex.ts             # Hash, resolve and publish user emails
+│   │   ├── notificationService.ts        # Enhanced notification system
+│   │   ├── taskOrder.ts                  # Sparse task ordering + rebalancing
+│   │   ├── taskArchive.ts                # Archive/restore helpers + 90-day clock
+│   │   ├── taskCleanupService.ts         # Expiry sweep foundation (not scheduled)
+│   │   ├── commentService.ts             # Comment CRUD (Firestore only)
+│   │   ├── attachmentService.ts          # Attachment metadata CRUD
+│   │   ├── linkService.ts                # External link CRUD
+│   │   ├── linkValidation.ts             # URL normalisation + validation
+│   │   ├── fileValidation.ts             # Attachment extension/size rules
+│   │   ├── storageService.ts             # Object-store boundary (S3 plugs in here)
+│   │   ├── datetime.ts                   # Date formatting helpers
+│   │   └── services_new.ts               # (Backup/alternative services)
 │   ├── components/
-│   │   ├── CreateModal.tsx           # Create workspace modal
-│   │   ├── CreateBoardModal.tsx      # Create board modal
-│   │   ├── AddMemberModal.tsx        # Add member by email + role
-│   │   ├── EditWorkspaceModal.tsx    # Edit workspace modal
-│   │   ├── EditBoardModal.tsx        # Edit board modal
+│   │   ├── CreateModal.tsx               # Create workspace modal
+│   │   ├── CreateBoardModal.tsx          # Create board modal
+│   │   ├── AddMemberModal.tsx            # Add member by email + role
+│   │   ├── EditWorkspaceModal.tsx        # Edit workspace modal
+│   │   ├── EditBoardModal.tsx            # Edit board modal
 │   │   ├── DeleteConfirmationModal.tsx
-│   │   ├── KanbanBoard.tsx           # DnD context, read-only aware
-│   │   ├── KanbanColumn.tsx          # Column + drop target
-│   │   ├── TaskCard.tsx              # Sortable card
-│   │   ├── NotificationPopup.tsx     # Toast-style notifications
-│   │   ├── NotificationDrawer.tsx    # Notification side panel
-│   │   ├── NotificationCard.tsx      # Individual notification card
-│   │   └── SearchResults.tsx         # Search dropdown results
-│   ├── types/
-│   │   └── index.ts                  # TypeScript interfaces
-│   └── ...
+│   │   ├── KanbanBoard.tsx               # DnD context, read-only aware
+│   │   ├── KanbanColumn.tsx              # Column + drop target
+│   │   ├── TaskCard.tsx                  # Sortable card
+│   │   ├── ArchivedTasksPanel.tsx        # Archived list, restore, delete
+│   │   ├── NotificationPopup.tsx         # Toast-style notifications
+│   │   ├── NotificationDrawer.tsx        # Notification side panel
+│   │   ├── NotificationCard.tsx          # Individual notification card
+│   │   ├── SearchResults.tsx             # Search dropdown results
+│   │   └── task/                         # Task detail modal + sub-sections
+│   │       ├── TaskDetailModal.tsx       # Trello-style task dialog
+│   │       ├── AssigneePicker.tsx        # Multi-assignee picker (max 5)
+│   │       ├── CommentSection.tsx        # Comment thread
+│   │       ├── CommentComposer.tsx       # New/edit comment box
+│   │       ├── CommentItem.tsx           # One comment row
+│   │       ├── Markdown.tsx              # Sanitising Markdown renderer
+│   │       ├── AttachmentSection.tsx     # Files + links area
+│   │       ├── AttachmentDropzone.tsx    # Upload control (disabled w/o storage)
+│   │       ├── AttachmentRow.tsx         # One file row
+│   │       ├── AttachmentImagePreview.tsx
+│   │       ├── LinkList.tsx              # External links list
+│   │       ├── LinkDialog.tsx            # Add/edit link dialog
+│   │       ├── LinkRow.tsx               # One link row
+│   │       └── ConfirmDialog.tsx         # Shared confirm dialog
+│   └── types/
+│       └── index.ts                      # TypeScript interfaces
+├── tests/
+│   └── firestore.rules.test.js           # Security-rules tests (emulator)
 ├── scripts/
-│   └── migrate-workspace-members.mjs # Optional owner-membership backfill
-├── firestore.rules                   # Firestore security rules
-├── firestore.indexes.json            # Composite indexes for queries
-├── firebase.json                     # Firebase hosting config
-├── env.example                       # Environment variables template
+│   └── migrate-workspace-members.mjs     # Optional owner-membership backfill
+├── docs/
+│   └── v2-phase1-architecture.md         # Collaboration/archive/storage design
+├── firestore.rules                       # Firestore security rules
+├── firestore.indexes.json                # Composite indexes for queries
+├── firebase.json                         # Firebase hosting config
+├── env.example                           # Environment variables template
+├── eslint.config.mjs
+├── postcss.config.mjs
 ├── package.json
 ├── tsconfig.json
 ├── next.config.ts
-├── tailwind.config.ts
 └── README.md
 ```
 
@@ -177,7 +253,6 @@ tasky/
 
    ```bash
    git clone <repository-url>
-   cd tasky
    ```
 
 2. **Install dependencies**
@@ -186,26 +261,21 @@ tasky/
    npm install
    ```
 
-3. **Set up Firebase**
-   - Create a project at [Firebase Console](https://console.firebase.google.com/)
-   - Enable **Authentication** → **Google** provider
-   - Enable **Firestore Database** (start in test mode)
-   - Go to Project Settings → General → Your apps → Web app (</>)
-   - Copy the config values
+3. **Create a Firebase project** and enable:
+   - **Authentication** → Google provider
+   - **Firestore Database**
 
 4. **Configure environment variables**
 
    ```bash
-   cp env.example .env.local
+   copy env.example .env.local
    ```
-
-   Edit `.env.local` with your Firebase config:
 
    ```env
    NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
-   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
    NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
    NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
@@ -216,38 +286,59 @@ tasky/
    ```bash
    npm install -g firebase-tools
    firebase login
-   firebase init firestore  # Select your project
    firebase deploy --only firestore:indexes
    ```
 
-   Or use the auto-create links from console errors.
+6. **Deploy Firestore rules**
 
-6. **Run development server**
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+
+7. **Run the development server**
 
    ```bash
    npm run dev
    ```
 
-7. **Open** [http://localhost:3000](http://localhost:3000)
+8. **Open** [http://localhost:3000](http://localhost:3000)
+
+> No object-storage environment variables exist yet. File attachments are metadata only
+> until an S3 provider is registered (see Roadmap).
 
 ## 🔐 Workspaces, Members & Security Rules
 
 ### Roles
 
 | Capability | Owner | Manager | Viewer |
-|---|---|---|---|
+
+|---|:---:|:---:|:---:|
 | View workspace, boards, tasks, members | ✅ | ✅ | ✅ |
 | Create / edit / delete boards | ✅ | ✅ | ❌ |
 | Create / edit / delete tasks | ✅ | ✅ | ❌ |
 | Move tasks (drag and drop) | ✅ | ✅ | ❌ |
+| Archive / restore / permanently delete tasks | ✅ | ✅ | ❌ |
 | Add members | ✅ | ❌ | ❌ |
 | Change a member's role | ✅ | ❌ | ❌ |
 | Remove a member | ✅ | ❌ | ❌ |
 | Edit or delete the workspace | ✅ | ❌ | ❌ |
+| Read & post comments | ✅ | ✅ | ✅ |
+| Edit own comment | ✅ | ✅ | ✅ |
+| Delete any comment | ✅ | ❌ | ❌ |
+| Read links | ✅ | ✅ | ✅ |
+| Add / edit own link | ✅ | ✅ | ❌ |
+| Delete any link | ✅ | ❌ | ❌ |
+| Read attachments | ✅ | ✅ | ✅ |
+| Upload / delete own attachment | ✅ | ✅ | ❌ |
+| Delete any attachment | ✅ | ❌ | ❌ |
 
 There is exactly one owner per workspace. Ownership cannot be transferred, the
 owner's membership cannot be deleted or demoted, and `owner` is not an assignable
 role when adding or updating a member.
+
+Viewer comment access is intentional: a viewer may join the discussion without
+gaining any task-editing capability. Attachment uploads are manager-and-above, and
+every capability above is mirrored in `src/lib/permissions.ts` and `firestore.rules`.
 
 ### Where a membership lives
 
@@ -338,6 +429,15 @@ document. Two options, neither of which touches anything else:
 - **Boards / Tasks** — access follows `workspaceId`, with tasks falling back to
   their board for documents written before `workspaceId` existed; managers and
   owners may write, viewers may only read
+- **Comments** — any member may read and create; `authorId` is bound to the auth
+  token; edits are limited to the author and may touch only content; only the
+  workspace owner may delete someone else's comment
+- **Attachments** — metadata is readable by any member; written by manager-and-
+  above with an immutable `uploadedBy` and a server-reconstructed `s3Key`;
+  deletions follow comment-style ownership (own, or owner-any)
+- **Links** — readable by any member; addable by manager-and-above; `url` must be
+  `http(s)` and 1..2048 chars; `createdBy`/`createdAt` pinned; creator or owner
+  may delete
 - **Notifications** — own notifications only
 
 ### Query shapes the rules expect
@@ -347,10 +447,13 @@ has to be narrowed by the same field the rule reads. Every query in the app
 already is:
 
 | Collection | Query |
+
 |------------|-------|
 | `workspaces` | `where('members', 'array-contains', uid)` |
 | `boards` | `where('workspaceId', '==', workspaceId)` |
 | `tasks` | `where('boardId', '==', boardId)` or `where('assigneeId', '==', uid)` |
+| `notifications` | `where('userId', '==', uid)` |
+| `comments` / `attachments` / `links` | read via the parent `tasks/{taskId}` document |
 
 A new query that filters on none of these should be treated as unproven until it
 has been checked, rather than assumed to work. Verifying the rules through the
@@ -366,11 +469,26 @@ instead of trusting the query result.
 | Command | Description |
 |---------|-------------|
 
-| `npm run dev` | Start development server (Turbopack) |
+| `npm run dev` | Start development server |
 | `npm run build` | Build for production |
 | `npm run start` | Start production server |
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | Run `tsc --noEmit` |
+| `npm run test:rules` | Run Firestore security-rules tests in the emulator |
+
+## 🧪 Testing
+
+Security rules are tested directly against the Firestore emulator, because a bug
+there is invisible to typechecking and to the UI. The suite (67 cases across 6
+suites in `tests/firestore.rules.test.js`) covers workspace/member/task/comment/
+attachment/link access for owners, managers, viewers and outsiders.
+
+```bash
+npm run test:rules
+```
+
+This spins up a disposable emulator (`--only firestore`), runs Mocha against
+`firestore.rules`, and tears it down. There is no React test runner in the project yet.
 
 ## 🏗 Data Model
 
@@ -414,7 +532,7 @@ interface Board {
   name: string;
   description?: string;
   color?: string;
-  columns: Column[];       // Default: To Do, In Progress, Done
+  columns: BoardColumn[];  // Default: To Do, In Progress, Done
   createdAt: Date;
   updatedAt: Date;
 }
@@ -429,14 +547,57 @@ interface Task {
   description?: string;
   status: 'todo' | 'in-progress' | 'completed';
   priority: 'low' | 'medium' | 'high';
-  assigneeId?: string;
+  assigneeId?: string;        // mirror of assigneeIds[0]; legacy/primary
   assigneeName?: string;
+  assigneeIds?: string[];     // every assignee (max 5), workspace members only
+  assigneeNames?: string[];   // parallel to assigneeIds
   dueDate?: Date | null;
   tags: string[];
   columnId: string;
   boardId: string;
-  workspaceId: string;     // access is decided from this
-  order: number;           // sparse position within the column
+  workspaceId: string;        // access is decided from this
+  order: number;              // sparse position within the column
+  archived?: boolean;         // absent = not archived
+  archivedAt?: Date | null;
+  archivedBy?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### Comment / Attachment / Link
+
+```typescript
+interface Comment {
+  id: string;
+  uid: string;
+  authorId: string;
+  authorName: string;
+  authorPhotoURL: string | null;
+  content: string;            // Markdown
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Attachment {
+  id: string;
+  workspaceId: string;
+  boardId: string;
+  name: string;               // original filename
+  size: number;
+  contentType: string;
+  s3Key: string;              // object key, never a URL
+  uploadedBy: string;
+  createdAt: Date;
+}
+
+interface Link {
+  id: string;
+  createdBy: string;
+  createdByName: string;
+  title: string;
+  url: string;                // absolute http(s) only
+  hostname: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -470,43 +631,73 @@ interface Notification {
 
 ### Real-time Updates
 
-- Uses `onSnapshot` listeners for workspaces, boards, and tasks
+- Uses `onSnapshot` listeners for workspaces, boards, tasks and notifications
+- Comments, attachments and links subscribe to their own subcollections
 - Automatic UI sync across browser tabs
 - Cleanup on component unmount
 
 ### Optimistic UI
 
 - Task creation, moves, edits, deletes update UI immediately
-- Background Firestore writes with rollback on error
-- Eliminates perceived latency
+- Background Firestore writes with per-task rollback on error
+- A monotonic sequence number per task prevents a slow write from clobbering a newer drag
+
+### Task Ordering
+
+- Sparse numeric scale (1000, 2000, 3000, …) so a drop between two tasks writes one document
+- `resolveTaskPlacement` computes the minimal set of updates; rebalancing when the gap closes
+- Documents written before ordering existed are migrated quietly in the background
+
+### Archiving & Retention
+
+- Archiving sets `archived: true`, `archivedAt` and `archivedBy`; the document never moves
+- The board derives `activeTasks` / `archivedTasks` from the one fetched array
+- Restore returns a task to its original column, falling back to the first column
+- `taskCleanupService` implements the 90-day sweep but nothing calls it yet
+
+### Storage Boundary
+
+- `src/lib/storageService.ts` defines `AttachmentStorageProvider`
+  (`isAvailable`, `uploadAttachment`, `getDownloadUrl`, `deleteAttachments`)
+- The only registered provider refuses every operation, so the UI says "not configured"
+  rather than pretending an upload succeeded
+- `buildAttachmentObjectKey` is the single place an object key is built, from verified ids only
+- Deletion reports `{ deleted, pending }` so an unreachable store never looks like success
+
+### Deletion Cascade
+
+- Permanent delete removes task comments, attachment metadata, links, then the task
+- Returns a `TaskDeletionReport`; any storage keys that could not be removed are surfaced
+- Firestore rules cannot cascade, so related subcollections are cleaned up explicitly
 
 ### Notification Deduplication
 
 - Template-based notifications with variable substitution
 - Duplicate prevention per template + metadata + time window
-- Cleanup utility removes old repetitive notifications
-
-### Search
-
-- Client-side filtering on workspace names/descriptions
-- Extensible for full-text search (Algolia, Typesense)
 
 ### Performance
 
 - `useMemo`/`useCallback` for expensive computations
 - Client-side sorting (avoids composite indexes for simple orders)
+- Tasks grouped once per render rather than filtered per column
 - Lazy-loaded modals and components
 
 ## 🎨 Customization
 
 ### Colors
 
-Edit `globals.css` CSS variables or Tailwind config:
+Tailwind CSS 4 is configured in CSS. Edit the design tokens in `src/app/globals.css`
+(the `:root` variables and the `@theme inline` block):
 
 ```css
 :root {
   --background: #f8f8f6;
   --foreground: #1a1a1a;
+  /* ... */
+}
+
+@theme inline {
+  --color-background: var(--background);
   /* ... */
 }
 ```
@@ -549,7 +740,14 @@ Click the link in console error, or run `firebase deploy --only firestore:indexe
 
 - [x] Drag-and-drop task reordering (dnd-kit)
 - [x] Workspace members and Owner/Manager/Viewer roles
-- [ ] Task comments & mentions
+- [x] Task comments (Markdown) and multi-assignee
+- [x] Task archiving, restore and permanent delete
+- [x] External links on a task
+- [x] Persist each user's email so members can be added by address
+- [ ] **S3 attachment storage** (`S3AttachmentStorageProvider`) — upload, download, delete
+- [ ] Inline image previews for jpg/jpeg/png once storage is connected
+- [ ] Scheduled 90-day archive cleanup (Cloud Scheduler → Cloud Function)
+- [ ] Task comments & @mentions notifications
 - [ ] Email invitations (today a member must have signed in once)
 
 ## 🤝 Contributing
