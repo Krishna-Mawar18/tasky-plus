@@ -8,7 +8,6 @@ import {
   Check,
   ChevronDown,
   Loader2,
-  Plus,
   Send,
   ShieldAlert,
   X,
@@ -195,13 +194,6 @@ function MarkPageInner() {
 
   // Return to wherever Mark was opened from; fall back to the dashboard when
   // there is no in-app history (for example a bookmarked /mark visit).
-  const handleBack = useCallback(() => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      router.back();
-    } else {
-      router.push('/dashboard');
-    }
-  }, [router]);
 
   const contextLabel = useMemo(() => {
     const workspace = workspaces.find((candidate) => candidate.id === ctxWorkspaceId);
