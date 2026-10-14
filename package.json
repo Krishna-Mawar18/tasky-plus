@@ -8,6 +8,7 @@
         "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test:mark": "node --import tsx --test \"tests/mark/**/*.test.ts\"",
     "test:rules": "firebase emulators:exec --only firestore --project demo-tasky-rules \"mocha tests/firestore.rules.test.js --timeout 20000 --exit\""
   },
     "dependencies": {
@@ -35,6 +36,7 @@
         "eslint-config-next": "15.4.5",
         "mocha": "^12.0.3",
         "tailwindcss": "^4.1.11",
+        "tsx": "^4.23.15",
         "typescript": "^5"
     }
 }
