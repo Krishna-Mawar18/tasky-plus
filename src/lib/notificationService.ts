@@ -8,11 +8,12 @@ import {
   updateDoc, 
   deleteDoc, 
   getDocs, 
-  query, 
-  where, 
+  query,
+  where,
   orderBy,
   serverTimestamp,
-  limit
+  limit,
+  onSnapshot
 } from 'firebase/firestore';
 
 export interface Notification {
@@ -225,6 +226,31 @@ export class EnhancedNotificationService {
       console.error('❌ Error deleting all notifications:', error);
       throw error;
     }
+  }
+
+  /**
+   * Watch the number of unread notifications for a user.
+   *
+   * The bell badge has to appear the moment a notification exists, not only
+   * after the panel is opened, so the count is pushed live rather than polled.
+   * Returns an unsubscribe function.
+   */
+  subscribeToUnreadCount(userId: string, callback: (count: number) => void): () => void {
+    if (!db) return () => {};
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', userId),
+      where('read', '==', false)
+    );
+
+    return onSnapshot(
+      q,
+      (snapshot) => callback(snapshot.size),
+      (error) => {
+        console.error('❌ Error subscribing to unread notifications:', error);
+      }
+    );
   }
 
   async getUnreadCount(userId: string): Promise<number> {

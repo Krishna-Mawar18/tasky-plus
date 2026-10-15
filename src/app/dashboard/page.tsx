@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
-import { Plus, Search, Bell, Users, BarChart3, ArrowUpDown, PartyPopper, CheckSquare, ListTodo, Clock, Edit, Trash2, X, ChevronDown, Target, TrendingUp, LogOut, CheckCircle, Info, AlertCircle, User, Grid3X3 } from 'lucide-react';
+import { Plus, Search, Bell, Users, PartyPopper, CheckSquare, ListTodo, Clock, Edit, Trash2, X, ChevronDown, Target, TrendingUp, LogOut, CheckCircle, Info, AlertCircle, User, Grid3X3, Goal, Folder, BarChart3, BarChart2, FolderKanban } from 'lucide-react';
 import { workspaceService, searchService, boardService, userService, taskService } from '@/lib/services';
 import { enhancedNotificationService, Notification } from '@/lib/notificationService';
 import { Workspace, QuickStats, Board, Task, CreateWorkspaceData } from '@/types';
@@ -502,6 +502,16 @@ export default function DashboardPage() {
     }
   }, [user, isFirebaseConfigured, ensureUserProfile]);
 
+  // Keep the bell badge in sync with the user's unread notifications. The count
+  // is fetched once up front and then pushed live by Firestore, so a badge is
+  // visible on load and updates the instant a notification is created or read.
+  useEffect(() => {
+    if (!user || !isFirebaseConfigured) return;
+
+    updateNotificationCount();
+    return enhancedNotificationService.subscribeToUnreadCount(user.uid, setNotificationCount);
+  }, [user, isFirebaseConfigured, updateNotificationCount]);
+
   if (loading || isLoading) {
     return (
       <div className="min-h-screen bg-[#f8f8f6] flex items-center justify-center">
@@ -557,14 +567,10 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#f8f8f6] text-black relative overflow-x-hidden">
-      {/* Animated background blobs */}
-      <div className="absolute -top-32 -left-32 w-[400px] h-[400px] bg-gradient-to-br from-blue-200 via-pink-100 to-yellow-100 rounded-full blur-3xl opacity-60 animate-blob1 z-0" />
-      <div className="absolute top-1/2 right-0 w-[300px] h-[300px] bg-gradient-to-br from-pink-200 via-blue-100 to-yellow-100 rounded-full blur-2xl opacity-50 animate-blob2 z-0" />
-      
 
       {/* Navigation */}
       <nav className="border-b border-gray-300 bg-white/90 backdrop-blur-sm relative z-[60]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 sm:h-20">
             <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
               <Image src="/tasky.svg" alt="Tasky Logo" width={40} height={40} className="w-8 h-8 sm:w-10 sm:h-10 transition-transform rounded-xl duration-300 hover:scale-110 hover:shadow-lg" />
@@ -572,6 +578,10 @@ export default function DashboardPage() {
             </div>
             
             <div className="flex items-center space-x-2 sm:space-x-4 flex-1 justify-end">
+              <h1 className="text-xl sm:text-xl font-extrabold font-mono">
+              Welcome back, <span className="bg-gradient-to-r font-bold  from-blue-600 to-purple-600 bg-clip-text text-transparent">{user.displayName}</span>!
+              </h1>
+
               {/* Search Bar */}
               <div className="relative z-[80] flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black w-3 h-3 sm:w-4 sm:h-4" />
@@ -815,17 +825,7 @@ export default function DashboardPage() {
       </nav>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-[50]">
-        {/* Welcome Section */}
-        <div className="text-center mb-12 animate-fadein">
-          <h1 className="text-5xl font-extrabold font-mono mb-4">
-            Welcome back, <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{user.displayName}</span>!
-          </h1>
-          <p className="text-xl text-gray-600 font-mono">Ready to organize your tasks and boost productivity?</p>
-        </div>
-
-
-
+      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-[50]">
         {/* Stats Filter Controls */}
         <div className="mb-6">
           <div className="bg-white/90 border border-gray-200 rounded-xl p-4 shadow-lg">
@@ -842,12 +842,19 @@ export default function DashboardPage() {
                   <div className="relative">
                     <button
                       onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
-                      className="w-full bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pr-10 font-mono text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 hover:border-gray-300 transition-all duration-200 shadow-sm hover:shadow-md min-w-[160px] text-left"
+                      className="w-full bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl px-6 py-3 pr-10 font-mono text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 hover:border-gray-300 transition-all duration-200 shadow-sm hover:shadow-md min-w-[160px] text-left"
                     >
                       {selectedFilterWorkspace === 'all' 
-                        ? '🌟 All Workspaces' 
-                        : `📁 ${workspaces.find(w => w.id === selectedFilterWorkspace)?.name || 'Unknown'}`
-                      }
+                        ? (
+                        <div className="flex items-center">
+                        <Folder className="w-4 h-4 mr-2" /> 
+                        <span>All Workspaces</span>
+                        </div>
+                        )
+                        : (<div className="flex items-center">
+                          <FolderKanban className="w-4 h-4 mr-2" />
+                          <span>{workspaces.find(w => w.id === selectedFilterWorkspace)?.name || 'Unknown'}</span>
+                          </div>)}
                     </button>
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
                       <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${showWorkspaceDropdown ? 'rotate-180' : ''}`} />
@@ -862,13 +869,13 @@ export default function DashboardPage() {
                             setSelectedFilterBoard('all');
                             setShowWorkspaceDropdown(false);
                           }}
-                          className={`px-4 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
+                          className={`px-6 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
                             selectedFilterWorkspace === 'all' 
                               ? 'bg-gray-100 text-gray-900 font-bold' 
                               : 'text-gray-700 hover:bg-gray-50'
                           }`}
                         >
-                          🌟 All Workspaces
+                          <Folder className="w-4 h-4 mr-2" /> All Workspaces
                         </div>
                         {workspaces.map(workspace => (
                           <div
@@ -878,13 +885,13 @@ export default function DashboardPage() {
                               setSelectedFilterBoard('all');
                               setShowWorkspaceDropdown(false);
                             }}
-                            className={`px-4 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
+                            className={`px-6 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
                               selectedFilterWorkspace === workspace.id 
                                 ? 'bg-gray-100 text-gray-900 font-bold' 
                                 : 'text-gray-700 hover:bg-gray-50'
                             }`}
                           >
-                            📁 {workspace.name}
+                            <FolderKanban className="w-4 h-4 mr-2" /> {workspace.name}
                           </div>
                         ))}
                       </div>
@@ -898,14 +905,19 @@ export default function DashboardPage() {
                   <div className="relative">
                     <button
                       onClick={() => setShowBoardDropdown(!showBoardDropdown)}
-                      className="w-full bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pr-10 font-mono text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 hover:border-gray-300 transition-all duration-200 shadow-sm hover:shadow-md min-w-[160px] text-left"
+                      className="w-full bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl px-6 py-3 pr-10 font-mono text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 hover:border-gray-300 transition-all duration-200 shadow-sm hover:shadow-md min-w-[160px] text-left"
                     >
                       {selectedFilterBoard === 'all' 
-                        ? '📊 All Boards'
+                        ? (
+                        <div className="flex items-center">
+                        <BarChart3 className="w-4 h-4 mr-2" /> 
+                        <span>All Boards</span>
+                        </div>
+                        )
                         : (() => {
                             const allBoards = Object.values(workspaceBoards).flat();
                             const selectedBoard = allBoards.find(b => b.id === selectedFilterBoard);
-                            return selectedBoard ? `🎯 ${selectedBoard.name}` : '📊 All Boards';
+                            return selectedBoard ? `${selectedBoard.name}` : '📊 All Boards';
                           })()
                       }
                     </button>
@@ -921,13 +933,17 @@ export default function DashboardPage() {
                             setSelectedFilterBoard('all');
                             setShowBoardDropdown(false);
                           }}
-                          className={`px-4 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
+                          className={`px-6 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
                             selectedFilterBoard === 'all' 
                               ? 'bg-gray-100 text-gray-900 font-bold' 
                               : 'text-gray-700 hover:bg-gray-50'
                           }`}
                         >
-                          📊 All Boards
+                        <div className="flex items-center">
+                        <BarChart3 className="w-4 h-4 mr-2" /> 
+                        <span>All Boards</span>
+                        </div>
+                        
                         </div>
                         {selectedFilterWorkspace === 'all' 
                           ? // Show all boards from all workspaces with workspace context
@@ -940,13 +956,13 @@ export default function DashboardPage() {
                                     setSelectedFilterBoard(board.id);
                                     setShowBoardDropdown(false);
                                   }}
-                                  className={`px-4 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
+                                  className={`px-6 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
                                     selectedFilterBoard === board.id 
                                       ? 'bg-gray-100 text-gray-900 font-bold' 
                                       : 'text-gray-700 hover:bg-gray-50'
                                   }`}
                                 >
-                                  🎯 {board.name} <span className="text-gray-500">({workspace?.name || 'Unknown'})</span>
+                                  <Goal className="w-4 h-4 mr-2" /> {board.name} <span className="text-gray-500">({workspace?.name || 'Unknown'})</span>
                                 </div>
                               ));
                             })
@@ -958,13 +974,13 @@ export default function DashboardPage() {
                                   setSelectedFilterBoard(board.id);
                                   setShowBoardDropdown(false);
                                 }}
-                                className={`px-4 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
+                                className={`px-6 py-3 font-mono text-sm cursor-pointer transition-colors duration-150 ${
                                   selectedFilterBoard === board.id 
                                     ? 'bg-gray-100 text-gray-900 font-bold' 
                                     : 'text-gray-700 hover:bg-gray-50'
                                 }`}
                               >
-                                🎯 {board.name}
+                                <Goal className="w-4 h-4 mr-2" /> {board.name}
                               </div>
                             ))
                         }
@@ -982,7 +998,7 @@ export default function DashboardPage() {
                         setSelectedFilterWorkspace('all');
                         setSelectedFilterBoard('all');
                       }}
-                      className="px-4 py-3 text-sm font-mono font-medium text-gray-700 hover:text-gray-900 bg-gradient-to-r from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 rounded-xl transition-all duration-200 border-2 border-red-200 hover:border-red-300 shadow-sm hover:shadow-md flex items-center space-x-2"
+                      className="px-6 py-3 text-sm font-mono font-medium text-gray-700 hover:text-gray-900 bg-gradient-to-r from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 rounded-xl transition-all duration-200 border-2 border-red-200 hover:border-red-300 shadow-sm hover:shadow-md flex items-center space-x-2"
                     >
                       <X className="w-4 h-4" />
                       <span>Reset</span>
@@ -1118,14 +1134,15 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Main Dashboard Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Workspaces & Quick Actions */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Workspaces */}
-            <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg animate-fadein">
+        {/* Main Two-Column Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.75fr_1fr] gap-8 items-start">
+          {/* Left Column - Workspaces */}
+          <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg animate-fadein">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold font-mono">Your Workspaces</h2>
+                <div className="flex items-center space-x-3">
+                  <h2 className="text-2xl font-bold font-mono">Your Workspaces</h2>
+                  <span className="bg-gray-100 text-gray-600 text-sm font-mono font-bold px-3 py-1 rounded-full">{workspaces.length}</span>
+                </div>
                 <button
                   onClick={handleCreateWorkspace}
                   className="bg-black text-white px-4 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-colors flex items-center space-x-2"
@@ -1135,7 +1152,7 @@ export default function DashboardPage() {
                 </button>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                  {workspaces.map((workspace, index) => {
                    const boards = workspaceBoards[workspace.id] || [];
                    return (
@@ -1261,7 +1278,7 @@ export default function DashboardPage() {
                                    <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-purple-50/50 opacity-0 group-hover/tag:opacity-100 transition-opacity duration-300"></div>
                                    <div className="relative z-10">
                                      <span className="text-gray-700 group-hover/tag:text-gray-900 transition-colors duration-300">
-                                       {board.name}
+                                      {board.name}
                                      </span>
                                    </div>
                                  </button>
@@ -1300,7 +1317,7 @@ export default function DashboardPage() {
                    );
                  })}
                  {(!isLoading && workspaces.length === 0) && (
-                   <div className="col-span-2 text-center py-8 text-gray-500 font-mono">
+                   <div className="col-span-1 sm:col-span-2 text-center py-8 text-gray-500 font-mono">
                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                        <Plus className="w-8 h-8 text-gray-400" />
                      </div>
@@ -1311,7 +1328,10 @@ export default function DashboardPage() {
                </div>
             </div>
             
-            {/* Recent Tasks */}
+          {/* Right Column - Profile & Recent Tasks */}
+          <div className="flex flex-col gap-8">
+            {/* Recent Tasks (ordered below Profile) */}
+            <div className="order-2">
             <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 animate-fadein" style={{ animationDelay: '0.2s' }}>
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
@@ -1405,8 +1425,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Right Column - User Profile & Quick Actions */}
-          <div className="space-y-8">
+          {/* User Profile (ordered above Recent Tasks) */}
+          <div className="order-1">
             {/* User Profile Card */}
             <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg animate-fadein" style={{ animationDelay: '0.4s' }}>
               <div className="flex items-center space-x-4 mb-6">
@@ -1428,17 +1448,17 @@ export default function DashboardPage() {
                   <span className="text-gray-600">Member Since</span>
                   <span className="font-semibold">{accountCreatedDate}</span>
                 </div>
-                <div className="flex justify-between gap-2 mt-4">
+                <div className="flex justify-end gap-4 mt-4">
                   <button
                     onClick={() => setShowEditProfileModal(true)}
-                    className="flex-1 bg-white text-black px-3 py-2 rounded-lg font-mono font-bold text-sm hover:bg-gray-100 border-2 border-black hover:border-gray-400 hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2"
+                    className="flex bg-white text-black px-3 py-2 rounded-lg font-mono font-bold text-sm hover:bg-gray-100 border-2 border-black hover:border-gray-400 hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2"
                   >
                     <User className="w-4 h-4" />
                     <span>Edit Profile</span>
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="flex-1 bg-black text-white px-3 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2"
+                    className="flex bg-black text-white px-3 py-2 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Sign Out</span>
@@ -1446,54 +1466,9 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-
-            {/* Quick Actions */}
-            <div className="bg-white/90 border border-gray-200 rounded-xl p-6 shadow-lg animate-fadein" style={{ animationDelay: '0.5s' }}>
-              <h3 className="text-xl font-bold font-mono mb-6">Quick Actions</h3>
-              <div className="space-y-3">
-                <button
-                  onClick={handleCreateWorkspace}
-                  className="w-full bg-black text-white p-3 rounded-lg font-mono font-bold text-sm hover:bg-white hover:text-black hover:border-black border-2 hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Create Workspace</span>
-                </button>
-                
-
-                <button
-                  onClick={handleInviteTeam}
-                  className="w-full bg-white text-black border-2 border-gray-500 p-3 rounded-lg font-mono font-bold text-sm hover:bg-gray-100 hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl"
-                >
-                  <Users className="w-4 h-4" />
-                  <span>Invite Team</span>
-                </button>
-                
-
-
-
-              </div>
-            </div>
-
-            {/* Features Coming Soon */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 shadow-lg animate-fadein" style={{ animationDelay: '0.6s' }}>
-              <h3 className="text-xl font-bold font-mono mb-4 text-gray-900">🚀 Coming Soon!</h3>
-              <div className="space-y-3 text-sm font-mono">
-                <div className="flex items-center space-x-2">
-                  <ArrowUpDown className="w-4 h-4 text-gray-600" />
-                  <span className="text-gray-700">Drag & Drop Kanban Boards</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Users className="w-4 h-4 text-gray-600" />
-                  <span className="text-gray-700">Real-time Team Collaboration</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <BarChart3 className="w-4 h-4 text-gray-600" />
-                  <span className="text-gray-700">Advanced Analytics</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Create Workspace Modal */}

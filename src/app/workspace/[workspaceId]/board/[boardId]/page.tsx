@@ -19,6 +19,7 @@ import {
   Calendar,
   Clock,
   Edit,
+  Trash2,
   Circle,
   AlertCircle,
   Eye
@@ -66,6 +67,7 @@ function BoardContent() {
   // control also blocks the write behind it. True while the role is unresolved,
   // which is what stops a viewer's page from flashing owner controls.
   const canEditBoard = can('board.edit');
+  const canDeleteBoard = can('board.delete');
   const readOnly = isWorkspaceReadOnly(role);
 
   const [board, setBoard] = useState<Board | null>(null);
@@ -79,6 +81,8 @@ function BoardContent() {
     dueDate: ''
   });
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteBoard, setShowDeleteBoard] = useState(false);
+  const [deletingBoard, setDeletingBoard] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   /** The task whose detail modal is open. `null` when the modal is closed. */
@@ -329,6 +333,28 @@ function BoardContent() {
       setShowEditModal(false);
     } catch (error) {
       console.error('Error updating board:', error);
+    }
+  };
+
+  /**
+   * Permanently remove this board and return to the workspace.
+   *
+   * Gated by `board.delete`, so a viewer never reaches here and a manager or
+   * owner sees the control. The board page unmounts on navigation, so no local
+   * board state needs unwinding on success.
+   */
+  const handleDeleteBoard = async () => {
+    if (!board || !canDeleteBoard) return;
+
+    setDeletingBoard(true);
+    try {
+      await boardService.deleteBoard(board.id);
+      toast.success('Board deleted.');
+      router.push(`/workspace/${workspaceId}`);
+    } catch (error) {
+      console.error('Error deleting board:', error);
+      toast.error('Failed to delete board. Please try again.');
+      setDeletingBoard(false);
     }
   };
 
@@ -751,6 +777,15 @@ function BoardContent() {
                   <span className="sm:hidden">Edit</span>
                 </button>
               )}
+              {canDeleteBoard && (
+                <button
+                  onClick={() => setShowDeleteBoard(true)}
+                  className="bg-red-500 text-white px-2 py-2 sm:px-2 sm:py-2 rounded-lg font-mono font-bold text-xs sm:text-sm hover:bg-white hover:text-red-500 border-2 border-red-500 hover:scale-105 transition-all duration-200 flex items-center space-x-1 sm:space-x-2"
+                  title="Delete board"
+                >
+                  <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -804,6 +839,25 @@ function BoardContent() {
         board={board}
         onSubmit={handleEditBoard}
       />
+
+      {/* Delete Board Confirmation */}
+      <ConfirmDialog
+        isOpen={showDeleteBoard}
+        title="Delete board?"
+        subtitle="This action cannot be undone"
+        tone="danger"
+        confirmLabel="Delete board"
+        busyLabel="Deleting..."
+        busy={deletingBoard}
+        onCancel={() => {
+          if (!deletingBoard) setShowDeleteBoard(false);
+        }}
+        onConfirm={() => void handleDeleteBoard()}
+      >
+        <p className="text-sm font-mono text-gray-700">
+          &quot;{board.name}&quot; will be permanently deleted. This cannot be undone.
+        </p>
+      </ConfirmDialog>
 
       {/*
         One modal for reading and editing a task. It replaced the separate

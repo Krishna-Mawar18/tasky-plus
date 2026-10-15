@@ -258,7 +258,7 @@ function MarkPageInner() {
                   id="mark-context-workspace"
                   value={ctxWorkspaceId}
                   onChange={(event) => setCtxWorkspaceId(event.target.value)}
-                  className="appearance-none rounded-[10px] border border-[#D7DCE3] bg-white py-2 pl-3 pr-8 font-mono text-xs text-[#111827] transition-colors focus-visible:border-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BFEAFF]"
+                  className="appearance-none rounded-xl border-2 border-black bg-white py-2 pl-3 pr-8 font-mono text-sm font-bold text-[#111827] transition-colors focus-visible:border-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8dEAFF]"
                 >
                   <option value="">No workspace</option>
                   {workspaces.map((workspace) => (
@@ -281,7 +281,7 @@ function MarkPageInner() {
                   value={ctxBoardId}
                   onChange={(event) => setCtxBoardId(event.target.value)}
                   disabled={!ctxWorkspaceId}
-                  className="appearance-none rounded-[10px] border border-[#D7DCE3] bg-white py-2 pl-3 pr-8 font-mono text-xs text-[#111827] transition-colors focus-visible:border-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BFEAFF] disabled:opacity-50"
+                  className="appearance-none rounded-xl border-2 border-black bg-white py-2 pl-3 pr-8 font-mono text-sm font-bold text-[#111827] transition-colors focus-visible:border-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8dEAFF] disabled:opacity-50"
                 >
                   <option value="">No board</option>
                   {boards.map((board) => (

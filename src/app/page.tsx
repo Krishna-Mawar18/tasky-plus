@@ -4,44 +4,47 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
-import { ListTodo, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper } from 'lucide-react';
+import Link from 'next/link';
+import { ListTodo, Zap, Palette, Shield, Smartphone, ArrowUpDown, PartyPopper, ArrowUpFromDot, Sparkles, Users, ShieldCheck, MessageSquare, ClipboardList, LayoutGrid, Lock, MonitorSmartphone } from 'lucide-react';
 
 const features = [
   {
-    icon: (
-      <svg className="w-14 h-14 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth={2} />
-      </svg>
-    ),
-    title: 'Kanban Boards',
-    desc: 'Visualize your workflow and move tasks with drag-and-drop.',
-    cta: 'Try Boards',
+    icon: <Sparkles className="w-14 h-14 text-pink-500" />,
+    title: 'Mark - AI Task Manager',
+    desc: 'Meet Mark, your AI task assistant. Manage workspaces, boards and tasks in plain language, with guided clarification and approval before sensitive actions.',
+    cta: 'Meet Mark',
   },
   {
-    icon: (
-      <svg className="w-14 h-14 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-      </svg>
-    ),
-    title: 'Quick Add',
-    desc: 'Add tasks and notes in seconds, from anywhere.',
-    cta: 'Add Now',
+    icon: <Users className="w-14 h-14 text-blue-500" />,
+    title: 'Team Collaboration',
+    desc: 'Work together in shared workspaces and boards, with changes syncing in real time.',
+    cta: 'Invite Team',
   },
   {
-    icon: (
-      <svg className="w-14 h-14 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-      </svg>
-    ),
-    title: 'Productivity Tips',
-    desc: 'Get smart suggestions to work smarter, not harder.',
-    cta: 'Get Tips',
+    icon: <ShieldCheck className="w-14 h-14 text-indigo-500" />,
+    title: 'Role-Based Access',
+    desc: 'Owner, Manager and Viewer roles give every teammate the right level of access.',
+    cta: 'Manage Roles',
+  },
+  {
+    icon: <LayoutGrid className="w-14 h-14 text-teal-500" />,
+    title: 'Workspaces & Boards',
+    desc: 'Keep multiple projects organized with separate workspaces and boards.',
+    cta: 'Organize',
+  },
+  {
+    icon: <Lock className="w-14 h-14 text-green-600" />,
+    title: 'Permission-Aware Workflows',
+    desc: 'Access rules and confirmation safeguards help protect your workspace data and sensitive actions.',
+    cta: 'Stay Safe',
+  },
+  {
+    icon: <MonitorSmartphone className="w-14 h-14 text-orange-500" />,
+    title: 'Remote Task Management',
+    desc: 'A responsive experience that works across desktop, tablet and mobile.',
+    cta: 'Go Mobile',
   },
 ];
-
-
-
-
 
 const tips = [
   'Use keyboard shortcuts to add tasks even faster!',
@@ -143,38 +146,15 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#f8f8f6] text-black relative overflow-x-hidden">
-      {/* Animated background blobs */}
-      <div className="absolute -top-16 -left-16 sm:-top-32 sm:-left-32 w-[200px] h-[200px] sm:w-[400px] sm:h-[400px] bg-gradient-to-br from-blue-200 via-pink-100 to-yellow-100 rounded-full blur-2xl sm:blur-3xl opacity-40 sm:opacity-60 animate-blob1 z-0" />
-      <div className="absolute top-1/2 -right-8 sm:right-0 w-[150px] h-[150px] sm:w-[300px] sm:h-[300px] bg-gradient-to-br from-pink-200 via-blue-100 to-yellow-100 rounded-full blur-xl sm:blur-2xl opacity-30 sm:opacity-50 animate-blob2 z-0" />
-      {/* Notebook lines background */}
-      <div aria-hidden className="absolute inset-0 z-0 pointer-events-none">
-        {[...Array(120)].map((_, i) => (
-          <div
-            key={i}
-            className="w-full h-0.5 border-t border-dashed border-gray-200 opacity-40 sm:opacity-60 shadow-[0_1px_0_0_rgba(0,0,0,0.03)]"
-            style={{ position: 'absolute', top: `${i * 1.8}rem` }}
-          />
-        ))}
-      </div>
-      {/* Notebook spiral */}
-      <div className="hidden sm:block absolute left-0 top-0 h-full z-10">
-        <div className="flex flex-col items-center h-full justify-center gap-4 sm:gap-6 pl-1 pr-2 sm:pl-2 sm:pr-4">
-          {[...Array(80)].map((_, i) => (
-            <div key={i} className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-gray-300 border border-gray-400 sm:border-2 mb-1 sm:mb-2 animate-spiral" style={{ animationDelay: `${i * 0.1}s` }} />
-          ))}
-        </div>
-      </div>
-
-
       {/* Navigation */}
-      <nav className="border-b border-gray-300 bg-transparent relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav className="border-b border-gray-300 bg-[#f8f8f8] relative z-10">
+        <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 sm:h-20">
             <div className="flex items-center space-x-2 sm:space-x-3">
               <Image src="/tasky.svg" alt="Tasky Logo" width={48} height={48} className="w-8 h-8 sm:w-12 sm:h-12 transition-transform rounded-xl duration-300 hover:scale-110 hover:shadow-lg" />
               <span className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-mono tracking-tight">Tasky</span>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center gap-3 sm:gap-6">
               <button
                 onClick={signInWithGoogle}
                 className="bg-black text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-mono font-bold text-sm sm:text-base lg:text-lg hover:bg-white hover:text-black hover:border-black border-2 border-black hover:scale-105 transition-all duration-200 shadow-md"
@@ -186,8 +166,27 @@ export default function HomePage() {
         </div>
       </nav>
 
+      {/* Notebook lines background */}
+      <div aria-hidden className="absolute inset-0 z-0 pointer-events-none">
+        {[...Array(140)].map((_, i) => (
+          <div
+            key={i}
+            className="w-full h-0.5 border-t border-dashed border-gray-200 opacity-40 sm:opacity-60 shadow-[0_1px_0_0_rgba(0,0,0,0.03)]"
+            style={{ position: 'absolute', top: `${i * 1.8}rem` }}
+          />
+        ))}
+      </div>
+      {/* Notebook spiral */}
+      <div className="hidden sm:block absolute left-0 top-0 h-full z-10">
+        <div className="flex flex-col items-center h-full justify-center gap-4 sm:gap-6 pl-0 pr-2 sm:pl-2 sm:pr-4">
+          {[...Array(96)].map((_, i) => (
+            <div key={i} className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-gray-300 border border-gray-400 sm:border-2 mb-1 sm:mb-2" />
+          ))}
+        </div>
+      </div>
+
       {/* Hero Section */}
-      <div className="flex flex-col items-center justify-center min-h-[60vh] sm:min-h-[70vh] px-4 sm:px-6 relative z-10 pt-8 sm:pt-12 pb-12 sm:pb-16 transition-transform duration-300">
+      <section id="home" className="flex flex-col items-center justify-center min-h-[60vh] sm:min-h-[70vh] px-4 sm:px-6 relative z-10 pt-8 sm:pt-12 pb-12 sm:pb-16 transition-transform duration-300">
         <div className="text-center max-w-5xl mx-auto animate-fadein">
           {/* Animated Geometric Logo */}
           <div className="flex justify-center mb-4 sm:mb-6">
@@ -236,10 +235,10 @@ export default function HomePage() {
             </button>
           </div>
         </div>
-      </div>
+      </section>
       
       {/* Features Section */}
-      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+      <section id="features" className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-mono text-center mb-8 sm:mb-12 px-4">Everything you need to stay organized</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {features.map((feature, index) => (
@@ -251,7 +250,8 @@ export default function HomePage() {
           ))}
         </div>
         {/* Mini Kanban demo */}
-        <div className="flex flex-col items-center mt-6 mb-6 px-4">
+        <div className="flex flex-col items-center mt-30 mb-6 px-4">
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-mono text-center mb-8 sm:mb-12 px-4">Try It Yourself </h2>
             <div className="bg-white/90 border border-gray-200 rounded-xl shadow-lg p-4 w-full max-w-sm sm:max-w-md">
               <div className="font-mono font-bold text-sm sm:text-base mb-2 text-center">Demo Board</div>
               <div className="flex flex-col gap-1">
@@ -265,10 +265,10 @@ export default function HomePage() {
             </div>
             <div className="text-xs text-gray-400 mt-2 font-mono text-center">(Click a task to complete it!)</div>
           </div>
-      </div>
+      </section>
 
       {/* Why Tasky Section */}
-      <section className="relative z-5 max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+      <section id="why-tasky" className="relative z-5 max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-mono text-center mb-8 sm:mb-12 px-4">Why choose Tasky?</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
           <div className="bg-white/90 border border-gray-200 rounded-xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300">
@@ -303,7 +303,8 @@ export default function HomePage() {
       </section>
 
       {/* How it works steps */}
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+      <section id="how-it-works" className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+        <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-mono text-center mb-8 sm:mb-12 px-4">How It Works</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
           {howItWorks.map((h, i) => (
             <div key={h.title} className="bg-white/90 border-2 border-gray-200 rounded-2xl p-4 sm:p-6 flex flex-col items-center text-center shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 animate-fadein" style={{ animationDelay: `${0.3 + i * 0.1}s` }}>
@@ -313,10 +314,10 @@ export default function HomePage() {
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* FAQ accordion */}
-      <div className="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+      <section id="faq" className="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-mono text-center mb-6 sm:mb-8">FAQ</h2>
         <div className="flex flex-col gap-3 sm:gap-4">
           {faqs.map((f, i) => (
@@ -331,15 +332,15 @@ export default function HomePage() {
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* Footer */}
       <footer className="relative z-10 bg-white/90 border-t border-gray-200 mt-12 sm:mt-16">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-            <div className="sm:col-span-2 lg:col-span-1">
+            <div className="sm:col-span-2 lg:col-span-4">
               <div className="flex items-center mb-3 sm:mb-4">
-                <Image src="/tasky_logo.svg" alt="Tasky Logo" width={32} height={32} className="w-6 h-6 sm:w-8 sm:h-8 mr-2" />
+                <Image src="/tasky.svg" alt="Tasky Logo" width={48} height={48} className="w-8 h-8 sm:w-8 sm:h-8 mr-2 rounded-lg" />
                 <span className="font-mono font-bold text-base sm:text-lg">Tasky</span>
               </div>
               <p className="text-gray-600 font-mono text-xs sm:text-sm mb-3 sm:mb-4 leading-relaxed">
@@ -348,22 +349,22 @@ export default function HomePage() {
                 Special thanks Khatu Shyamji 🚀
               </p>
               <div className="flex space-x-4">
-                <a href="https://github.com/Darktasky18" className="text-gray-400 hover:text-gray-600 transition-colors">
+                <a href="https://github.com/Krishna-Mawar18" className="text-gray-400 hover:text-gray-600 transition-colors">
                   <span className="sr-only">GitHub</span>
                   <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                   </svg>
                 </a>
-                <a href="https://www.instagram.com/krishna.mawar18" className="text-gray-400 hover:text-gray-600 transition-colors">
+                <a href="https://www.instagram.com/krishnamawar_" className="text-gray-400 hover:text-gray-600 transition-colors">
                   <span className="sr-only">Instagram</span>
                   <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
                   </svg>
                 </a>
-                <a href="https://discord.gg/HSgqaBYP" className="text-gray-400 hover:text-gray-600 transition-colors">
-                  <span className="sr-only">Discord</span>
+                <a href="https://www.linkedin.com/in/krishnamawar" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 transition-colors">
+                  <span className="sr-only">LinkedIn</span>
                   <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419-.019 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1568 2.4189Z"/>
+                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                   </svg>
                 </a>
               </div>
@@ -371,22 +372,31 @@ export default function HomePage() {
             <div>
               <h3 className="font-mono font-bold text-xs sm:text-sm text-gray-900 mb-2 sm:mb-3">Product</h3>
               <ul className="space-y-1 sm:space-y-2">
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Features</a></li>
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Pricing</a></li>
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">API</a></li>
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Integrations</a></li>
+                <li><Link href="/#features" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Features</Link></li>
+                <li><Link href="/#why-tasky" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Why Tasky</Link></li>
+                <li><Link href="/#how-it-works" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">How It Works</Link></li>
+                <li><Link href="/#faq" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">FAQ</Link></li>
+                <li><Link href="/#features" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Meet Mark</Link></li>
               </ul>
             </div>
             <div>
               <h3 className="font-mono font-bold text-xs sm:text-sm text-gray-900 mb-2 sm:mb-3">Company</h3>
               <ul className="space-y-1 sm:space-y-2">
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">About</a></li>
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Blog</a></li>
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Careers</a></li>
-                <li><a href="#" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Contact</a></li>
+                <li><Link href="/about" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">About</Link></li>
+                <li><Link href="/blog" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Blog</Link></li>
+                <li><Link href="/contact" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Contact</Link></li>
               </ul>
             </div>
             <div>
+              <h3 className="font-mono font-bold text-xs sm:text-sm text-gray-900 mb-2 sm:mb-3">Resources</h3>
+              <ul className="space-y-1 sm:space-y-2">
+                <li><button type="button" onClick={signInWithGoogle} className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Getting Started</button></li>
+                <li><Link href="/#features" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Task Management</Link></li>
+                <li><Link href="/#features" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Team Collaboration</Link></li>
+                <li><Link href="/#faq" className="text-gray-600 font-mono text-xs sm:text-sm hover:text-gray-900 transition-colors">Help &amp; FAQ</Link></li>
+              </ul>
+            </div>
+            <div id="feedback">
               <h3 className="font-mono font-bold text-xs sm:text-sm text-gray-900 mb-2 sm:mb-3">Feedback</h3>
               <p className="text-gray-600 font-mono text-xs sm:text-sm mb-2 sm:mb-3 leading-relaxed">Have suggestions or found a bug? Let us know!</p>
               <form 
@@ -419,7 +429,7 @@ export default function HomePage() {
           </div>
           <div className="border-t border-gray-200 mt-6 sm:mt-8 pt-4 sm:pt-6 text-center">
             <p className="text-gray-500 font-mono text-xs sm:text-sm">
-              © 2025 Tasky. All rights reserved.
+              © {new Date().getFullYear()} Tasky. All rights reserved.
             </p>
           </div>
         </div>
@@ -427,8 +437,8 @@ export default function HomePage() {
 
       {/* Scroll to top button */}
       {showTop && (
-        <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 bg-black text-white w-10 h-10 sm:w-12 sm:h-12 rounded-full shadow-lg hover:bg-[#abc4ff] hover:scale-105 hover:text-black transition-colors animate-pop flex items-center justify-center text-lg sm:text-2xl font-bold">
-          ↑
+        <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 bg-black text-white w-10 h-10 sm:w-12 sm:h-12 rounded-full shadow-lg hover:bg-[#8edeff] hover:scale-105 hover:text-black transition-colors animate-pop flex items-center justify-center text-lg sm:text-2xl font-bold">
+          <ArrowUpFromDot className="w-6 h-6" />
         </button>
       )}
       

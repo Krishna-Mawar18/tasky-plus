@@ -14,10 +14,13 @@ import {
   List,
   Clock,
   Edit,
+  Trash2,
   ArrowLeft,
   Target
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import EditWorkspaceModal from '../../../components/EditWorkspaceModal';
+import { ConfirmDialog } from '@/components/task/ConfirmDialog';
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -37,6 +40,7 @@ function WorkspaceContent() {
   const workspaceId = params.workspaceId as string;
   const { loading: roleLoading, can, isOwner } = useWorkspaceRole();
   const canCreateBoard = can('board.create');
+  const canDeleteBoard = can('board.delete');
   const canEditWorkspace = can('workspace.edit');
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -45,6 +49,8 @@ function WorkspaceContent() {
   const [loading, setLoading] = useState(true);
   const [showCreateBoard, setShowCreateBoard] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [boardToDelete, setBoardToDelete] = useState<Board | null>(null);
+  const [deletingBoard, setDeletingBoard] = useState(false);
   const [newBoard, setNewBoard] = useState({
     name: '',
     description: '',
@@ -139,6 +145,25 @@ function WorkspaceContent() {
 
   const handleBoardClick = (boardId: string) => {
     router.push(`/workspace/${workspaceId}/board/${boardId}`);
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!canDeleteBoard || !boardToDelete) return;
+
+    setDeletingBoard(true);
+    const deletedBoardId = boardToDelete.id;
+    try {
+      await boardService.deleteBoard(deletedBoardId);
+      setBoards(prev => prev.filter(board => board.id !== deletedBoardId));
+      setTasks(prev => prev.filter(task => task.boardId !== deletedBoardId));
+      toast.success('Board deleted.');
+      setBoardToDelete(null);
+    } catch (error) {
+      console.error('Error deleting board:', error);
+      toast.error('Failed to delete board. Please try again.');
+    } finally {
+      setDeletingBoard(false);
+    }
   };
 
   const handleEditWorkspace = async (data: { name: string; description: string; color: string }) => {
@@ -488,8 +513,25 @@ function WorkspaceContent() {
                             <div className={`w-4 h-4 rounded-full ${board.color || 'bg-blue-500'} shadow-lg group-hover:scale-125 group-hover:shadow-xl transition-all duration-300`}></div>
                             <h3 className="font-bold text-lg text-gray-800 group-hover:text-gray-900 transition-colors duration-200 line-clamp-1">{board.name}</h3>
                           </div>
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                          <div className="flex items-center space-x-2">
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                            </div>
+                            {canDeleteBoard && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setBoardToDelete(board);
+                                }}
+                                className="relative w-8 h-8 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-200 hover:shadow-lg hover:scale-110 transition-all duration-300 group/btn overflow-hidden opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                title="Delete board"
+                              >
+                                <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-red-100 opacity-0 sm:group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <Trash2 className="w-4 h-4 text-gray-600 sm:group-hover/btn:text-red-600 transition-colors duration-300" />
+                                </div>
+                              </button>
+                            )}
                           </div>
                         </div>
                         
@@ -642,6 +684,25 @@ function WorkspaceContent() {
         workspace={workspace}
         onSubmitAction={handleEditWorkspace}
       />
+
+      {/* Delete Board Confirmation */}
+      <ConfirmDialog
+        isOpen={boardToDelete !== null}
+        title="Delete board?"
+        subtitle="This action cannot be undone"
+        tone="danger"
+        confirmLabel="Delete board"
+        busyLabel="Deleting..."
+        busy={deletingBoard}
+        onCancel={() => {
+          if (!deletingBoard) setBoardToDelete(null);
+        }}
+        onConfirm={() => void handleDeleteBoard()}
+      >
+        <p className="text-sm font-mono text-gray-700">
+          &quot;{boardToDelete?.name}&quot; will be permanently deleted. This cannot be undone.
+        </p>
+      </ConfirmDialog>
 
       {/* Animations */}
       <style jsx global>{`

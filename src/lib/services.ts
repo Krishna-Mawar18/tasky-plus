@@ -185,13 +185,24 @@ export const workspaceService = {
    *
    * Firestore rules cannot cascade, so the `members` subcollection is cleaned up
    * in the same batch rather than being left behind as orphans.
+   *
+   * The owner's own membership document is deliberately left untouched: the
+   * rules protect it (`memberId != ownerIdOf(workspaceId)`), and including it
+   * would make the whole atomic batch fail, leaving the workspace in place. It
+   * becomes an orphan under the deleted workspace, which is harmless because the
+   * parent document no longer exists.
    */
   async deleteWorkspace(id: string): Promise<void> {
     if (!db) throw new Error('Firebase not configured');
 
+    const workspaceSnap = await getDoc(doc(db, 'workspaces', id));
+    const ownerId = workspaceSnap.exists() ? String(workspaceSnap.data().ownerId ?? '') : '';
+
     const membersSnapshot = await getDocs(collection(db, 'workspaces', id, 'members'));
     const batch = writeBatch(db);
-    membersSnapshot.docs.forEach((member) => batch.delete(member.ref));
+    membersSnapshot.docs
+      .filter((member) => member.id !== ownerId)
+      .forEach((member) => batch.delete(member.ref));
     batch.delete(doc(db, 'workspaces', id));
     await batch.commit();
   },
